@@ -16,7 +16,8 @@ from collections import defaultdict
 import numpy as np
 
 import events as e
-from .callbacks import state_to_features, STAGE1_ACTIONS, MODEL_FILE
+from features import state_to_features
+from .callbacks import STAGE1_ACTIONS, MODEL_FILE
 
 # --- Hyperparameters -------------------------------------------------------
 ALPHA = 0.1            # learning rate
