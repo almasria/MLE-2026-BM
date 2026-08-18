@@ -25,8 +25,8 @@ import torch
 import torch.nn as nn
 
 import events as e
-from features import state_to_features
-from .callbacks import STAGE1_ACTIONS, MODEL_FILE, QNetwork
+from .callbacks import state_to_features, STAGE1_ACTIONS, MODEL_FILE, QNetwork
+
 # --- Hyperparameters (report material: sweep these!) -----------------------
 GAMMA = 0.9
 LEARNING_RATE = 1e-3
@@ -78,7 +78,7 @@ def game_events_occurred(self, old_game_state, self_action, new_game_state, even
     new_f = state_to_features(new_game_state)
 
     # Custom events — same logic as q_agent (coin one-hot: argmax = direction)
-    coin_dir = old_f[0]
+    coin_dir = int(np.argmax(old_f[:5]))
     if coin_dir != 4:
         if STAGE1_ACTIONS.index(self_action) == coin_dir:
             events.append(MOVED_TOWARD_COIN)
@@ -131,10 +131,10 @@ def _learn_step(self):
         return
 
     batch = random.sample(self.buffer, BATCH_SIZE)
-    states = torch.from_numpy(np.stack([t[0] for t in batch])).float()    
+    states = torch.from_numpy(np.stack([t[0] for t in batch]))
     actions = torch.tensor([t[1] for t in batch], dtype=torch.long)
     rewards = torch.tensor([t[2] for t in batch], dtype=torch.float32)
-    next_states = torch.from_numpy(np.stack([t[3] for t in batch])).float()
+    next_states = torch.from_numpy(np.stack([t[3] for t in batch]))
     dones = torch.tensor([t[4] for t in batch], dtype=torch.bool)
 
     # Q(s,a) for the actions actually taken

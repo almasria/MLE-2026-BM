@@ -12,19 +12,22 @@ Requires: torch (add to requirements.txt if you submit this agent!).
 
 import os
 import random
+
 import numpy as np
 import torch
 import torch.nn as nn
 
-from features import state_to_features
+from .features import state_to_features as semantic_features
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 STAGE1_ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT']
 
 MODEL_FILE = "dqn_model.pt"
 
-# Coin direction (encoded as 0 to 4) + 4 neighbor walkability flags (current features.py v1)
-FEATURE_DIM = 5
+DIRECTIONS = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # UP, RIGHT, DOWN, LEFT
+
+# one-hot coin direction (5) + 4 neighbor walkability flags
+FEATURE_DIM = 9
 
 
 class QNetwork(nn.Module):
@@ -73,8 +76,22 @@ def act(self, game_state: dict) -> str:
         return random.choice(STAGE1_ACTIONS)
 
     with torch.no_grad():
-        x = torch.tensor(features, dtype=torch.float32).unsqueeze(0).to(self.device)        
+        x = torch.from_numpy(features).unsqueeze(0).to(self.device)
         q_values = self.q_net(x).squeeze(0).numpy()
     return STAGE1_ACTIONS[int(np.argmax(q_values))]
 
 
+# ---------------------------------------------------------------------------
+# Features: the SEMANTICS come from the shared features.py (same module as
+# q_agent — single source of truth). This wrapper only changes the ENCODING:
+# the network needs floats, so the coin direction becomes a one-hot vector.
+# ---------------------------------------------------------------------------
+
+def state_to_features(game_state: dict) -> np.ndarray:
+    """Shared semantic features -> float32[9] (one-hot dir + 4 walk flags)."""
+    if game_state is None:
+        return None
+    coin_dir, *neighbors = semantic_features(game_state)
+    onehot = np.zeros(5, dtype=np.float32)
+    onehot[coin_dir] = 1.0
+    return np.concatenate([onehot, np.array(neighbors, dtype=np.float32)])

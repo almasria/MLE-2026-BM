@@ -19,7 +19,8 @@ import random
 
 import numpy as np
 
-from features import state_to_features
+from .features import state_to_features
+from .symmetry import canonicalize_v1
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
@@ -28,6 +29,10 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 STAGE1_ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT']
 
 MODEL_FILE = "q_table.pkl"
+
+# Direction encoding for the "where is the nearest coin" feature
+# 0 = up, 1 = right, 2 = down, 3 = left, 4 = no coin reachable / on top of coin
+DIRECTIONS = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # matches UP, RIGHT, DOWN, LEFT
 
 
 def setup(self):
@@ -55,8 +60,12 @@ def act(self, game_state: dict) -> str:
     if random.random() < self.epsilon:
         return random.choice(STAGE1_ACTIONS)
 
-    # Exploitation: pick argmax over Q-values (unknown states default to zeros)
-    q_values = self.q_table.get(features, np.zeros(len(STAGE1_ACTIONS)))
-    best = int(np.argmax(q_values))
-    self.logger.debug(f"Features {features} -> Q {np.round(q_values, 2)} -> {STAGE1_ACTIONS[best]}")
-    return STAGE1_ACTIONS[best]
+    # Exploitation with D4 canonicalization: Q-values live only at the
+    # orbit representative. Pick the greedy action THERE, then map it back
+    # into the real world through the inverse group element.
+    canon, g = canonicalize_v1(features)
+    q_values = self.q_table.get(canon, np.zeros(len(STAGE1_ACTIONS)))
+    best_canon = int(np.argmax(q_values))
+    best_real = g.inverse().apply_action(best_canon)
+    self.logger.debug(f"{features} -> canon {canon} via {g} -> {STAGE1_ACTIONS[best_real]}")
+    return STAGE1_ACTIONS[best_real]

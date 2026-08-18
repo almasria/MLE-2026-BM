@@ -16,8 +16,9 @@ from collections import defaultdict
 import numpy as np
 
 import events as e
-from features import state_to_features
 from .callbacks import STAGE1_ACTIONS, MODEL_FILE
+from .features import state_to_features
+from .symmetry import canonicalize_v1
 
 # --- Hyperparameters -------------------------------------------------------
 ALPHA = 0.1            # learning rate
@@ -78,9 +79,15 @@ def game_events_occurred(self, old_game_state, self_action, new_game_state, even
     if self_action not in STAGE1_ACTIONS:
         return  # ignore actions outside our restricted set (shouldn't happen)
 
-    a = STAGE1_ACTIONS.index(self_action)
-    q_old = self.q_table.setdefault(old_features, np.zeros(len(STAGE1_ACTIONS)))
-    q_next = self.q_table.get(new_features, np.zeros(len(STAGE1_ACTIONS)))
+    # D4 canonical update: both states go to their orbit representatives;
+    # the REAL action taken is mapped forward into the old state's canonical
+    # frame. (The custom-event logic above deliberately keeps using the RAW
+    # features — "moved toward the coin" is a real-world statement.)
+    canon_old, g_old = canonicalize_v1(old_features)
+    canon_new, _ = canonicalize_v1(new_features)
+    a = g_old.apply_action(STAGE1_ACTIONS.index(self_action))
+    q_old = self.q_table.setdefault(canon_old, np.zeros(len(STAGE1_ACTIONS)))
+    q_next = self.q_table.get(canon_new, np.zeros(len(STAGE1_ACTIONS)))
 
     td_target = reward + GAMMA * np.max(q_next)
     q_old[a] += ALPHA * (td_target - q_old[a])
@@ -94,8 +101,9 @@ def end_of_round(self, last_game_state, last_action, events):
 
     last_features = state_to_features(last_game_state)
     if last_action in STAGE1_ACTIONS:
-        a = STAGE1_ACTIONS.index(last_action)
-        q = self.q_table.setdefault(last_features, np.zeros(len(STAGE1_ACTIONS)))
+        canon_last, g_last = canonicalize_v1(last_features)
+        a = g_last.apply_action(STAGE1_ACTIONS.index(last_action))
+        q = self.q_table.setdefault(canon_last, np.zeros(len(STAGE1_ACTIONS)))
         q[a] += ALPHA * (reward - q[a])
 
     # Decay exploration
