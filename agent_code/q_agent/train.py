@@ -1,5 +1,5 @@
 """
-train.py — Q-learning training logic for the stage-1 coin collector.
+train.py - Q-learning training logic for the stage-1 coin collector.
 
 Framework contract (called by the environment when run with --train 1):
     setup_training(self)
@@ -16,9 +16,8 @@ from collections import defaultdict
 import numpy as np
 
 import events as e
-from .callbacks import STAGE1_ACTIONS, MODEL_FILE
+from .callbacks import STAGE1_ACTIONS, MODEL_FILE, canon, USE_SYMMETRY
 from .features import state_to_features
-from .symmetry import canonicalize_v1
 
 # --- Hyperparameters -------------------------------------------------------
 ALPHA = 0.1            # learning rate
@@ -45,6 +44,11 @@ GAME_REWARDS = {
 
 
 def setup_training(self):
+    import os, random as _random
+    seed = os.environ.get("Q_AGENT_SEED")
+    if seed is not None:
+        _random.seed(int(seed)); np.random.seed(int(seed))
+    self.run_tag = os.environ.get("Q_AGENT_RUN_TAG", "default")
     self.epsilon = EPSILON_START
     self.round_reward = 0.0
     self.reward_history = []          # per-round totals -> plot this!
@@ -82,9 +86,9 @@ def game_events_occurred(self, old_game_state, self_action, new_game_state, even
     # D4 canonical update: both states go to their orbit representatives;
     # the REAL action taken is mapped forward into the old state's canonical
     # frame. (The custom-event logic above deliberately keeps using the RAW
-    # features — "moved toward the coin" is a real-world statement.)
-    canon_old, g_old = canonicalize_v1(old_features)
-    canon_new, _ = canonicalize_v1(new_features)
+    # features - "moved toward the coin" is a real-world statement.)
+    canon_old, g_old = canon(old_features)
+    canon_new, _ = canon(new_features)
     a = g_old.apply_action(STAGE1_ACTIONS.index(self_action))
     q_old = self.q_table.setdefault(canon_old, np.zeros(len(STAGE1_ACTIONS)))
     q_next = self.q_table.get(canon_new, np.zeros(len(STAGE1_ACTIONS)))
@@ -101,7 +105,7 @@ def end_of_round(self, last_game_state, last_action, events):
 
     last_features = state_to_features(last_game_state)
     if last_action in STAGE1_ACTIONS:
-        canon_last, g_last = canonicalize_v1(last_features)
+        canon_last, g_last = canon(last_features)
         a = g_last.apply_action(STAGE1_ACTIONS.index(last_action))
         q = self.q_table.setdefault(canon_last, np.zeros(len(STAGE1_ACTIONS)))
         q[a] += ALPHA * (reward - q[a])
@@ -121,6 +125,9 @@ def end_of_round(self, last_game_state, last_action, events):
             f"avg coins = {avg_c:.2f}, epsilon = {self.epsilon:.3f}, "
             f"Q-table size = {len(self.q_table)}"
         )
+    with open("training_history.csv", "a") as fh:
+        fh.write(f"{self.run_tag},{int(USE_SYMMETRY)},{n},{self.round_reward},"
+                 f"{self.round_coins},{self.epsilon:.4f},{len(self.q_table)}\n")
     self.round_reward = 0.0
     self.round_coins = 0
 

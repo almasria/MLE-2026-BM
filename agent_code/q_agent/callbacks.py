@@ -20,7 +20,17 @@ import random
 import numpy as np
 
 from .features import state_to_features
-from .symmetry import canonicalize_v1
+from .symmetry import canonicalize_v1, IDENTITY
+
+# --- Ablation switch --------------------------------------------------------
+# Set env var Q_AGENT_SYMMETRY=0 to train/play WITHOUT D4 canonicalization.
+# "Off" simply means canonicalizing with the identity element, so the entire
+# code path is IDENTICAL in both conditions -- the switch is the only variable.
+USE_SYMMETRY = os.environ.get("Q_AGENT_SYMMETRY", "1") != "0"
+
+
+def canon(features):
+    return canonicalize_v1(features) if USE_SYMMETRY else (features, IDENTITY)
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
@@ -28,7 +38,7 @@ ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 # Restricting the action set makes learning much faster. Widen it in stage 2.
 STAGE1_ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT']
 
-MODEL_FILE = "q_table.pkl"
+MODEL_FILE = "q_table_sym.pkl" if USE_SYMMETRY else "q_table_plain.pkl"
 
 # Direction encoding for the "where is the nearest coin" feature
 # 0 = up, 1 = right, 2 = down, 3 = left, 4 = no coin reachable / on top of coin
@@ -55,7 +65,7 @@ def act(self, game_state: dict) -> str:
     features = state_to_features(game_state)
 
     # Exploration. NOTE: we keep a small epsilon even in play mode (not just
-    # training) — a fully deterministic policy in a deterministic world can get
+    # training) - a fully deterministic policy in a deterministic world can get
     # trapped bouncing between two states forever. A little noise breaks loops.
     if random.random() < self.epsilon:
         return random.choice(STAGE1_ACTIONS)
@@ -63,9 +73,9 @@ def act(self, game_state: dict) -> str:
     # Exploitation with D4 canonicalization: Q-values live only at the
     # orbit representative. Pick the greedy action THERE, then map it back
     # into the real world through the inverse group element.
-    canon, g = canonicalize_v1(features)
-    q_values = self.q_table.get(canon, np.zeros(len(STAGE1_ACTIONS)))
+    canon_f, g = canon(features)
+    q_values = self.q_table.get(canon_f, np.zeros(len(STAGE1_ACTIONS)))
     best_canon = int(np.argmax(q_values))
     best_real = g.inverse().apply_action(best_canon)
-    self.logger.debug(f"{features} -> canon {canon} via {g} -> {STAGE1_ACTIONS[best_real]}")
+    self.logger.debug(f"{features} -> canon {canon_f} via {g} -> {STAGE1_ACTIONS[best_real]}")
     return STAGE1_ACTIONS[best_real]
