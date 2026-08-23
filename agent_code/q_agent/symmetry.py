@@ -200,3 +200,34 @@ if __name__ == "__main__":
             assert g.apply_coord(nx, ny, 7) == (gx + OFFS[gd][0], gy + OFFS[gd][1])
 
     print("All symmetry self-tests passed.")
+
+
+# ---------------------------------------------------------------------------
+# v2 features (week 3): (objective_dir, nb x4, in_danger, safe_dir,
+#                        bomb_safe, crates_in_range)
+# Directions permute under g; flags and counts are invariant.
+# ---------------------------------------------------------------------------
+
+def transform_v2(features: tuple, g: D4Element) -> tuple:
+    obj, u, r, d, l, danger, safe, bomb_safe, crates = features
+    nb = (u, r, d, l)
+    new_nb = [0] * N_DIRS
+    for i in range(N_DIRS):
+        new_nb[g.apply_dir(i)] = nb[i]
+    return (g.apply_dir(obj), *new_nb, danger, g.apply_dir(safe), bomb_safe, crates)
+
+
+def canonicalize_v2(features: tuple):
+    """Orbit representative + the g that maps input to it (see canonicalize_v1)."""
+    best, best_g = features, IDENTITY
+    for g in GROUP:
+        t = transform_v2(features, g)
+        if t < best:
+            best, best_g = t, g
+    return best, best_g
+
+
+# v3 features: identical structure to v2 (index 5 is now an urgency
+# bucket 0-3 instead of a 0/1 flag — still an invariant scalar).
+transform_v3 = transform_v2
+canonicalize_v3 = canonicalize_v2
