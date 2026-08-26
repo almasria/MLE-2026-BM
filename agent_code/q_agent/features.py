@@ -68,6 +68,15 @@ def state_to_features(game_state):
     if objective_dir == 4 and (x, y) not in set(coins):
         objective_dir = bfs_direction_to_nearest(
             field, (x, y), crate_adjacent_tiles(field), plain_walkable)
+    # endgame: no coins or crates left -> the objective becomes the hunt
+    if objective_dir == 4 and others:
+        hunt = set()
+        for o in others:
+            for dx, dy in DIRECTIONS:
+                t = (o[0] + dx, o[1] + dy)
+                if field[t] == 0:
+                    hunt.add(t)
+        objective_dir = bfs_direction_to_nearest(field, (x, y), hunt, plain_walkable)
 
     # 5: urgency of MY tile
     my_deadline = lethal_from.get((x, y), INF)
@@ -108,7 +117,19 @@ def state_to_features(game_state):
     # 8: crates my bomb would hit
     crates = min(3, sum(1 for t in own_blast if field[t] == 1))
 
-    return (objective_dir, *neighbors, urgency, safe_dir, bomb_safe, crates)
+    # 9-10 (v3): opponent awareness. Opponent bombs already flow through
+    # 'bombs', so danger handling needs nothing new — these add OFFENSE.
+    opp_adjacent = set()
+    for o in others:
+        for dx, dy in DIRECTIONS:
+            t = (o[0] + dx, o[1] + dy)
+            if field[t] == 0:
+                opp_adjacent.add(t)
+    opp_dir = bfs_direction_to_nearest(field, (x, y), opp_adjacent, plain_walkable)
+    opp_in_blast = 1 if any(o in own_blast for o in others) else 0
+
+    return (objective_dir, *neighbors, urgency, safe_dir, bomb_safe, crates,
+            opp_dir, opp_in_blast)
 
 
 # ---------------------------------------------------------------------------

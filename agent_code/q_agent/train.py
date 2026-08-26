@@ -11,11 +11,11 @@ from .callbacks import ACTIONS, MODEL_FILE, canon, USE_SYMMETRY
 from .features import state_to_features
 
 # --- Hyperparameters --------------------------------------------------------
-ALPHA = 0.1
-GAMMA = 0.9
+ALPHA = float(os.environ.get("Q_AGENT_ALPHA", "0.1"))
+GAMMA = float(os.environ.get("Q_AGENT_GAMMA", "0.9"))
 EPSILON_START = float(os.environ.get("Q_AGENT_EPS_START", "1.0"))
 EPSILON_END = 0.05
-EPSILON_DECAY = 0.995   # W2 lesson: 0.999 leaves eps=0.37 at round 1000 ->
+EPSILON_DECAY = float(os.environ.get("Q_AGENT_EPS_DECAY", "0.995"))   # W2 lesson: 0.999 leaves eps=0.37 at round 1000 ->
                         # greedy policy under-converged; 0.995 floors by ~600
 
 # --- Custom events (features v2 semantics) ----------------------------------
@@ -24,6 +24,7 @@ MOVED_AWAY_FROM_OBJECTIVE = "MOVED_AWAY_FROM_OBJECTIVE"
 ESCAPED_DANGER = "ESCAPED_DANGER"        # urgency >0 -> 0
 ENTERED_DANGER = "ENTERED_DANGER"        # danger 0 -> 1 (not via own bomb)
 SAFE_BOMB_NEAR_CRATES = "SAFE_BOMB_NEAR_CRATES"
+SAFE_BOMB_NEAR_OPPONENT = "SAFE_BOMB_NEAR_OPPONENT"
 SUICIDAL_BOMB = "SUICIDAL_BOMB"          # bombed with no escape route
 FOLLOWED_ESCAPE = "FOLLOWED_ESCAPE"      # in danger, moved along safe_dir
 IGNORED_ESCAPE = "IGNORED_ESCAPE"        # in danger, did something else
@@ -46,6 +47,7 @@ GAME_REWARDS = {
     ENTERED_DANGER: -3.0,
     STILL_IN_DANGER: -0.75,
     SAFE_BOMB_NEAR_CRATES: 4.0,
+    SAFE_BOMB_NEAR_OPPONENT: 6.0,
     SUICIDAL_BOMB: -10.0,
     FOLLOWED_ESCAPE: 2.5,
     IGNORED_ESCAPE: -2.5,
@@ -60,7 +62,7 @@ GAME_REWARDS = {
 MOVED_EVENTS = {e.MOVED_UP: 0, e.MOVED_RIGHT: 1, e.MOVED_DOWN: 2, e.MOVED_LEFT: 3}
 
 # v2 feature indices (keep in sync with features.py!)
-F_OBJ, F_DANGER, F_SAFE, F_BOMBSAFE, F_CRATES = 0, 5, 6, 7, 8
+F_OBJ, F_DANGER, F_SAFE, F_BOMBSAFE, F_CRATES, F_OPP, F_OPPBLAST = 0, 5, 6, 7, 8, 9, 10
 
 
 def setup_training(self):
@@ -98,10 +100,13 @@ def add_custom_events(old_f, action, new_f, events):
     if e.BOMB_DROPPED in events:
         if old_f[F_BOMBSAFE] == 0:
             events.append(SUICIDAL_BOMB)
-        elif old_f[F_CRATES] > 0:
-            events.append(SAFE_BOMB_NEAR_CRATES)
         else:
-            events.append(USELESS_BOMB)   # stage 4: revisit (opponent bombs)
+            if old_f[F_CRATES] > 0:
+                events.append(SAFE_BOMB_NEAR_CRATES)
+            if old_f[F_OPPBLAST] == 1:
+                events.append(SAFE_BOMB_NEAR_OPPONENT)
+            if old_f[F_CRATES] == 0 and old_f[F_OPPBLAST] == 0:
+                events.append(USELESS_BOMB)
 
     # objective shaping only while safe — while in danger, escaping rules
     if old_f[F_DANGER] > 0 and new_f is not None and new_f[F_DANGER] > 0:

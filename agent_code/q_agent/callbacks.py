@@ -7,18 +7,18 @@ import random
 import numpy as np
 
 from .features import state_to_features
-from .symmetry import canonicalize_v2, IDENTITY
+from .symmetry import canonicalize_v3, IDENTITY
 
 # --- Ablation switch (see week-2 experiment) --------------------------------
 USE_SYMMETRY = os.environ.get("Q_AGENT_SYMMETRY", "1") != "0"
 
 
 def canon(features):
-    return canonicalize_v2(features) if USE_SYMMETRY else (features, IDENTITY)
+    return canonicalize_v3(features) if USE_SYMMETRY else (features, IDENTITY)
 
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
-MODEL_FILE = "q_table_v2_sym.pkl" if USE_SYMMETRY else "q_table_v2_plain.pkl"
+MODEL_FILE = "q_table_v3_sym.pkl" if USE_SYMMETRY else "q_table_v3_plain.pkl"
 
 
 def setup(self):
