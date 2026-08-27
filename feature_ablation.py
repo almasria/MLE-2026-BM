@@ -15,8 +15,8 @@ Use it like this:
     # then edit features.py to the new feature version and run again
     python3 feature_ablation.py --label feature_v2 --rounds 1000 --eval-rounds 20
 
-Each run resets the Q-model and training log before training, so it does NOT
-continue from a previous trained checkpoint.
+Each run writes its Q-model and training log directly into its own output
+directory, so tracked agent artifacts are never reset or overwritten.
 
 Outputs are saved under:
 
@@ -43,22 +43,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 AGENT_DIR = ROOT / "agent_code" / "q_agent"
 ACTIVE_FEATURES = AGENT_DIR / "features.py"
-MODEL_FILES = [
-    AGENT_DIR / "q_table_plain.pkl",
-    AGENT_DIR / "q_table_sym.pkl",
-    AGENT_DIR / "q_table_v3_plain.pkl",
-    AGENT_DIR / "q_table_v3_sym.pkl",
-]
-TRAIN_HISTORY = AGENT_DIR / "training_history.csv"
 OUT_ROOT = ROOT / "evaluation_results"
-
-
-def reset_run_artifacts():
-    for model_file in MODEL_FILES:
-        if model_file.exists():
-            model_file.unlink()
-    if TRAIN_HISTORY.exists():
-        TRAIN_HISTORY.unlink()
 
 
 def activate_feature_file(feature_name: str):
@@ -203,12 +188,17 @@ def main():
     run_dir = OUT_ROOT / stamp / args.label
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    reset_run_artifacts()
-
     env = os.environ.copy()
     env["Q_AGENT_SYMMETRY"] = str(args.symmetry)
     env["Q_AGENT_SEED"] = str(args.seed)
     env["Q_AGENT_RUN_TAG"] = f"{args.label}_seed{args.seed}"
+    model_name = (
+        "q_table_v3_sym.pkl" if args.symmetry else "q_table_v3_plain.pkl"
+    )
+    env["Q_AGENT_MODEL_PATH"] = str((run_dir / model_name).resolve())
+    env["Q_AGENT_HISTORY_PATH"] = str(
+        (run_dir / "training_history.csv").resolve()
+    )
 
     print(f"[1/2] Training {args.label} for {args.rounds} rounds...")
     train_cmd = [
@@ -226,10 +216,6 @@ def main():
         "--no-gui",
     ]
     run_cmd(train_cmd, env=env)
-
-    training_copy = run_dir / "training_history.csv"
-    if TRAIN_HISTORY.exists():
-        training_copy.write_text(TRAIN_HISTORY.read_text())
 
     eval_json = run_dir / f"eval_{args.label}.json"
     print(f"[2/2] Evaluating {args.label} for {args.eval_rounds} rounds...")

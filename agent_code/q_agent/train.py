@@ -17,6 +17,9 @@ EPSILON_START = float(os.environ.get("Q_AGENT_EPS_START", "1.0"))
 EPSILON_END = 0.05
 EPSILON_DECAY = float(os.environ.get("Q_AGENT_EPS_DECAY", "0.995"))   # W2 lesson: 0.999 leaves eps=0.37 at round 1000 ->
                         # greedy policy under-converged; 0.995 floors by ~600
+TRAINING_HISTORY_FILE = os.environ.get(
+    "Q_AGENT_HISTORY_PATH", "training_history.csv"
+)
 
 # --- Custom events (features v2 semantics) ----------------------------------
 MOVED_TOWARD_OBJECTIVE = "MOVED_TOWARD_OBJECTIVE"
@@ -159,7 +162,7 @@ def end_of_round(self, last_game_state, last_action, events):
             f"Round {n}: avg reward (last 100) = {np.mean(self.reward_history[-100:]):.1f}, "
             f"avg coins = {np.mean(self.coins_history[-100:]):.2f}, "
             f"epsilon = {self.epsilon:.3f}, Q-table = {len(self.q_table)}")
-    with open("training_history.csv", "a") as fh:
+    with open(TRAINING_HISTORY_FILE, "a") as fh:
         fh.write(f"{self.run_tag},{int(USE_SYMMETRY)},{n},{self.round_reward},"
                  f"{self.round_coins},{self.epsilon:.4f},{len(self.q_table)}\n")
     self.round_reward = 0.0

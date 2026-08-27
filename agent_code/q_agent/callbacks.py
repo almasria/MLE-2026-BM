@@ -18,7 +18,10 @@ def canon(features):
 
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
-MODEL_FILE = "q_table_v3_sym.pkl" if USE_SYMMETRY else "q_table_v3_plain.pkl"
+DEFAULT_MODEL_FILE = (
+    "q_table_v3_sym.pkl" if USE_SYMMETRY else "q_table_v3_plain.pkl"
+)
+MODEL_FILE = os.environ.get("Q_AGENT_MODEL_PATH", DEFAULT_MODEL_FILE)
 
 
 def setup(self):
