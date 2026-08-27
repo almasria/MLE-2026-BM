@@ -233,13 +233,27 @@ def canonicalize_v2(features: tuple):
 # ---------------------------------------------------------------------------
 
 def transform_v3(features: tuple, g: D4Element) -> tuple:
-    obj, u, r, d, l, urg, safe, bsafe, crates, opp, oblast = features
+    """Apply D4 to the legacy v2/v3 feature prefix and leave the newer scalar
+    tactical features untouched. This keeps the Q-agent compatible when the
+    feature vector grows without changing the action-index contracts.
+    """
+    if len(features) <= 11:
+        obj, u, r, d, l, urg, safe, bsafe, crates, opp, oblast = features
+        nb = (u, r, d, l)
+        new_nb = [0] * N_DIRS
+        for i in range(N_DIRS):
+            new_nb[g.apply_dir(i)] = nb[i]
+        return (g.apply_dir(obj), *new_nb, urg, g.apply_dir(safe), bsafe, crates,
+                g.apply_dir(opp), oblast)
+
+    obj, u, r, d, l, urg, safe, bsafe, crates, opp, oblast = features[:11]
     nb = (u, r, d, l)
     new_nb = [0] * N_DIRS
     for i in range(N_DIRS):
         new_nb[g.apply_dir(i)] = nb[i]
-    return (g.apply_dir(obj), *new_nb, urg, g.apply_dir(safe), bsafe, crates,
-            g.apply_dir(opp), oblast)
+    transformed_prefix = (g.apply_dir(obj), *new_nb, urg, g.apply_dir(safe), bsafe,
+                          crates, g.apply_dir(opp), oblast)
+    return transformed_prefix + tuple(features[11:])
 
 
 def canonicalize_v3(features: tuple):
