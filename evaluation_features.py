@@ -8,9 +8,9 @@ self-contained bundle under:
     evaluation_results/<timestamp>/
 
 The bundle includes:
-- summary.csv with rows: run_tag, symmetry, seed, avg_reward, avg_coins,
+- summary.csv with rows: run_tag, symmetry, seed, score_per_round, avg_coins,
   avg_steps, total_score, kills, suicides, table_size
-- plots for avg_coins, avg_reward, avg_steps vs feature variant / condition
+- plots for avg_coins, score_per_round, avg_steps vs feature variant / condition
 - raw copied evaluation JSON files
 - a short report.txt explaining what was generated
 
@@ -59,16 +59,14 @@ def summarize_eval_jsons(eval_dir: Path):
 
         agent_name = next(iter(data["by_agent"].keys()))
         agent_stats = data["by_agent"][agent_name]
-        round_stats = data.get("by_round", {})
-
         coins = float(agent_stats.get("coins", 0))
         score = float(agent_stats.get("score", 0))
         steps = float(agent_stats.get("steps", 0))
         rounds = float(agent_stats.get("rounds", 0))
-        kills = float(sum(r.get("kills", 0) for r in round_stats.values()))
-        suicides = float(sum(r.get("suicides", 0) for r in round_stats.values()))
+        kills = float(agent_stats.get("kills", 0) or 0)
+        suicides = float(agent_stats.get("suicides", 0) or 0)
 
-        avg_reward = score / rounds if rounds else 0.0
+        score_per_round = score / rounds if rounds else 0.0
         avg_coins = coins / rounds if rounds else 0.0
         avg_steps = steps / rounds if rounds else 0.0
 
@@ -76,7 +74,7 @@ def summarize_eval_jsons(eval_dir: Path):
             "run_tag": fp.stem.replace("_eval", ""),
             "seed": fp.stem.split("seed")[-1] if "seed" in fp.stem else "unknown",
             "symmetry": 1 if "sym1" in fp.stem else 0,
-            "avg_reward": avg_reward,
+            "score_per_round": score_per_round,
             "avg_coins": avg_coins,
             "avg_steps": avg_steps,
             "total_score": score,
@@ -132,18 +130,18 @@ def make_plots(rows, bundle_dir: Path):
     fig.savefig(bundle_dir / "avg_coins_by_condition.png", dpi=150)
     plt.close(fig)
 
-    # avg_reward plot
+    # Official competition score plot (not shaped training reward)
     fig, ax = plt.subplots(figsize=(8, 5))
     for sym, rs in sorted(by_condition.items()):
         xs = [r["run_tag"] for r in rs]
-        ys = [r["avg_reward"] for r in rs]
+        ys = [r["score_per_round"] for r in rs]
         ax.bar(xs, ys, alpha=0.7, label=f"symmetry={sym}")
-    ax.set_title("Average reward per round by condition")
-    ax.set_ylabel("avg_reward")
+    ax.set_title("Official score per round by condition")
+    ax.set_ylabel("score_per_round")
     ax.set_xlabel("run_tag")
     ax.legend()
     fig.tight_layout()
-    fig.savefig(bundle_dir / "avg_reward_by_condition.png", dpi=150)
+    fig.savefig(bundle_dir / "score_per_round_by_condition.png", dpi=150)
     plt.close(fig)
 
     # avg_steps plot
@@ -187,7 +185,7 @@ def write_summary_csv(rows, bundle_dir: Path):
         "run_tag",
         "symmetry",
         "seed",
-        "avg_reward",
+        "score_per_round",
         "avg_coins",
         "avg_steps",
         "total_score",
@@ -234,13 +232,13 @@ def main():
         "Included outputs:",
         "- summary.csv",
         "- avg_coins_by_condition.png",
-        "- avg_reward_by_condition.png",
+        "- score_per_round_by_condition.png",
         "- avg_steps_by_condition.png",
         "- training_coin_curves.png",
         "- raw_eval/*.json",
         "",
         "Columns in summary.csv:",
-        "run_tag, symmetry, seed, avg_reward, avg_coins, avg_steps, total_score, kills, suicides, table_size",
+        "run_tag, symmetry, seed, score_per_round, avg_coins, avg_steps, total_score, kills, suicides, table_size",
     ]
     (bundle_dir / "report.txt").write_text("\n".join(report) + "\n")
 

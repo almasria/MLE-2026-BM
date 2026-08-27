@@ -114,7 +114,7 @@ def summarize_eval_json(json_path: Path, agent_name: str | None = None):
     return {
         "agent": agent_name,
         "rounds": rounds,
-        "avg_reward": score / rounds if rounds else 0.0,
+        "score_per_round": score / rounds if rounds else 0.0,
         "avg_coins": coins / rounds if rounds else 0.0,
         "avg_steps": steps / rounds if rounds else 0.0,
         "total_score": score,
@@ -129,7 +129,7 @@ def save_summary_csv(rows, path: Path):
         "label",
         "agent",
         "rounds",
-        "avg_reward",
+        "score_per_round",
         "avg_coins",
         "avg_steps",
         "total_score",
