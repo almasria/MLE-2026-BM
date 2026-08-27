@@ -3,17 +3,13 @@ feature_ablation.py
 
 A lightweight experimental runner for feature comparisons.
 
-This script does NOT change the feature code automatically. Instead, it forces
-an isolated training/evaluation run for the CURRENT version of the feature
-implementation in the repo.
+This script selects a committed feature implementation through an environment
+variable. It never copies files over the tracked feature dispatcher.
 
 Use it like this:
 
-    # baseline feature version in the current code
-    python3 feature_ablation.py --label baseline --rounds 1000 --eval-rounds 20
-
-    # then edit features.py to the new feature version and run again
-    python3 feature_ablation.py --label feature_v2 --rounds 1000 --eval-rounds 20
+    python3 feature_ablation.py --label strategic --feature-version v3 \
+        --rounds 1000 --eval-rounds 20
 
 Each run writes its Q-model and training log directly into its own output
 directory, so tracked agent artifacts are never reset or overwritten.
@@ -34,7 +30,6 @@ import argparse
 import csv
 import json
 import os
-import shutil
 import subprocess
 import sys
 from datetime import datetime
@@ -42,66 +37,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 AGENT_DIR = ROOT / "agent_code" / "q_agent"
-ACTIVE_FEATURES = AGENT_DIR / "features.py"
 OUT_ROOT = ROOT / "evaluation_results"
-
-
-def activate_feature_file(feature_name: str):
-    """Swap the active q_agent/features.py file to the selected source without
-    changing the selected source itself.
-
-    For legacy feature files such as featuresv2.py, we generate a small
-    compatibility wrapper that preserves the old logic while expanding it to the
-    v2/v3 tuple layout expected by q_agent.
-    """
-    if feature_name == "features.py":
-        return
-
-    source = Path(feature_name)
-    if not source.is_absolute():
-        source = AGENT_DIR / feature_name
-    if not source.exists():
-        raise FileNotFoundError(f"Feature file not found: {source}")
-
-    if source.name == "featuresv2.py":
-        wrapper = '''"""Auto-generated compatibility wrapper for the legacy baseline.
-
-This file is generated at runtime by feature_ablation.py and is never written
-back to the source baseline file. It preserves the legacy feature logic while
-filling the v2/v3-compatible tuple shape expected by q_agent callbacks.
-"""
-
-from agent_code.q_agent.featuresv2 import state_to_features as legacy_state_to_features
-
-
-def state_to_features(game_state):
-    base = legacy_state_to_features(game_state)
-    if base is None:
-        return None
-
-    # legacy baseline returns (obj, up, right, down, left)
-    obj = base[0]
-    nb = list(base[1:5])
-    while len(nb) < 4:
-        nb.append(0)
-
-    # q_agent expects this v2+ prefix:
-    # (objective_dir, up, right, down, left, urgency, safe_dir, bomb_safe,
-    #  crates, opp_dir, opp_in_blast)
-    urgency = 0
-    safe_dir = 4
-    bomb_safe = 1 if sum(nb) > 0 else 0
-    crates = 0
-    opp_dir = 4
-    opp_in_blast = 0
-    return (obj, *nb, urgency, safe_dir, bomb_safe, crates, opp_dir, opp_in_blast)
-'''
-        ACTIVE_FEATURES.write_text(wrapper)
-        print(f"Activated compatibility wrapper for: {source.name}")
-        return
-
-    shutil.copy2(source, ACTIVE_FEATURES)
-    print(f"Activated feature file: {source.name}")
 
 
 def run_cmd(cmd, env=None):
@@ -171,7 +107,12 @@ def save_summary_csv(rows, path: Path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--label", default="feature_run", help="experiment label, e.g. baseline or feature_v2")
-    ap.add_argument("--feature-file", default="features.py", help="File under agent_code/q_agent to activate for this run, e.g. features.py or featuresv2.py")
+    ap.add_argument(
+        "--feature-version",
+        default="v3",
+        choices=["v3"],
+        help="Compatible feature implementation to use for this run",
+    )
     ap.add_argument("--agents", nargs="+", default=["q_agent"], help="Agents to deploy, e.g. --agents q_agent or --agents q_agent rule_based_agent")
     ap.add_argument("--train", type=int, default=1, help="How many of the first agents are in training mode")
     ap.add_argument("--rounds", type=int, default=1000, help="Training rounds")
@@ -182,8 +123,6 @@ def main():
     ap.add_argument("--no-gui", action="store_true", help="run without GUI")
     args = ap.parse_args()
 
-    activate_feature_file(args.feature_file)
-
     stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_dir = OUT_ROOT / stamp / args.label
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -192,6 +131,7 @@ def main():
     env["Q_AGENT_SYMMETRY"] = str(args.symmetry)
     env["Q_AGENT_SEED"] = str(args.seed)
     env["Q_AGENT_RUN_TAG"] = f"{args.label}_seed{args.seed}"
+    env["Q_AGENT_FEATURE_VERSION"] = args.feature_version
     model_name = (
         "q_table_v3_sym.pkl" if args.symmetry else "q_table_v3_plain.pkl"
     )
