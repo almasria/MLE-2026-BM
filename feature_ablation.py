@@ -28,6 +28,7 @@ with:
 
 import argparse
 import csv
+import hashlib
 import json
 import os
 import subprocess
@@ -35,9 +36,48 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from agent_code.q_agent.config import GAME_REWARDS, q_learning_manifest
+
 ROOT = Path(__file__).resolve().parent
 AGENT_DIR = ROOT / "agent_code" / "q_agent"
 OUT_ROOT = ROOT / "evaluation_results"
+FEATURE_FILES = {"v3": AGENT_DIR / "featuresv3.py"}
+
+
+def git_output(*args):
+    completed = subprocess.run(
+        ["git", *args],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return completed.stdout.strip()
+
+
+def relevant_git_changes():
+    """Return changed paths, excluding personal editor metadata."""
+    changes = []
+    for line in git_output("status", "--porcelain").splitlines():
+        path = line[3:]
+        if path == ".vscode" or path.startswith(".vscode/"):
+            continue
+        changes.append(line)
+    return changes
+
+
+def file_sha256(path: Path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def write_manifest(manifest, path: Path):
+    with open(path, "w") as fh:
+        json.dump(manifest, fh, indent=2, sort_keys=True)
+        fh.write("\n")
 
 
 def run_cmd(cmd, env=None):
@@ -123,7 +163,8 @@ def main():
     ap.add_argument("--no-gui", action="store_true", help="run without GUI")
     args = ap.parse_args()
 
-    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    created_at = datetime.now().astimezone()
+    stamp = created_at.strftime("%Y-%m-%d_%H-%M-%S")
     run_dir = OUT_ROOT / stamp / args.label
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -140,6 +181,50 @@ def main():
         (run_dir / "training_history.csv").resolve()
     )
 
+    feature_path = FEATURE_FILES[args.feature_version]
+    changed_paths = relevant_git_changes()
+    manifest = {
+        "label": args.label,
+        "created_at": created_at.isoformat(),
+        "status": "running",
+        "git": {
+            "commit": git_output("rev-parse", "HEAD"),
+            "dirty": bool(changed_paths),
+            "changes": changed_paths,
+        },
+        "feature": {
+            "version": args.feature_version,
+            "file": str(feature_path.relative_to(ROOT)),
+            "sha256": file_sha256(feature_path),
+        },
+        "training": {
+            "seed": args.seed,
+            "scenario": args.scenario,
+            "agents": args.agents,
+            "train_agents": args.train,
+            "rounds": args.rounds,
+        },
+        "evaluation": {
+            "seed": args.seed,
+            "scenario": args.scenario,
+            "agents": args.agents,
+            "rounds": args.eval_rounds,
+        },
+        "q_learning": {
+            **q_learning_manifest(),
+            "symmetry": bool(args.symmetry),
+        },
+        "rewards": dict(sorted(GAME_REWARDS.items())),
+        "artifacts": {
+            "model": model_name,
+            "training_history": "training_history.csv",
+            "evaluation": f"eval_{args.label}.json",
+            "summary": "summary.csv",
+        },
+    }
+    manifest_path = run_dir / "manifest.json"
+    write_manifest(manifest, manifest_path)
+
     print(f"[1/2] Training {args.label} for {args.rounds} rounds...")
     train_cmd = [
         sys.executable,
@@ -155,7 +240,13 @@ def main():
         str(args.rounds),
         "--no-gui",
     ]
-    run_cmd(train_cmd, env=env)
+    try:
+        run_cmd(train_cmd, env=env)
+    except Exception as exc:
+        manifest["status"] = "failed"
+        manifest["error"] = str(exc)
+        write_manifest(manifest, manifest_path)
+        raise
 
     eval_json = run_dir / f"eval_{args.label}.json"
     print(f"[2/2] Evaluating {args.label} for {args.eval_rounds} rounds...")
@@ -173,7 +264,13 @@ def main():
         "--save-stats",
         str(eval_json),
     ]
-    run_cmd(eval_cmd, env=env)
+    try:
+        run_cmd(eval_cmd, env=env)
+    except Exception as exc:
+        manifest["status"] = "failed"
+        manifest["error"] = str(exc)
+        write_manifest(manifest, manifest_path)
+        raise
 
     selected_agent = args.agents[0] if args.agents else None
     if args.train > 0 and args.agents:
@@ -183,6 +280,10 @@ def main():
     row["label"] = args.label
     summary_path = run_dir / "summary.csv"
     save_summary_csv([row], summary_path)
+
+    manifest["status"] = "completed"
+    manifest["completed_at"] = datetime.now().astimezone().isoformat()
+    write_manifest(manifest, manifest_path)
 
     print(f"\nCompleted feature run: {args.label}")
     print(f"Saved evaluation bundle: {run_dir}")
