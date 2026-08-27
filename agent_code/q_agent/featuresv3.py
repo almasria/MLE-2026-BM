@@ -9,6 +9,7 @@ from collections import deque
 
 BOMB_RANGE = 3
 BOMB_TIMER = 4
+HYPOTHETICAL_BOMB_TIMER = BOMB_TIMER - 1
 EXPLOSION_EXTRA = 2
 
 DIRECTIONS = [(0, -1), (1, 0), (0, 1), (-1, 0)]
@@ -31,7 +32,9 @@ def state_to_features(game_state):
     lethal_from, lethal_until = lethal_windows(field, bombs, explosions)
 
     def lethal_at(tile, m):
-        return lethal_from.get(tile, INF) < m <= lethal_until.get(tile, -1) or m <= explosions[tile]
+        return is_lethal_at(
+            tile, m, lethal_from, lethal_until, explosions
+        )
 
     def passable(tile, m):
         return field[tile] == 0 and tile not in bomb_positions and tile not in others_pos and not lethal_at(tile, m)
@@ -64,23 +67,47 @@ def state_to_features(game_state):
         urgency = 3
 
     if urgency > 0:
-        _, safe_dir, _ = temporal_escape((x, y), passable, lethal_from, explosions)
+        _, safe_dir, _ = temporal_escape(
+            (x, y),
+            passable,
+            lethal_from,
+            explosions,
+            lethal_until=lethal_until,
+        )
     else:
         safe_dir = 4
 
     own_blast = blast_coords(field, (x, y))
-    own_from = {t: min(lethal_from.get(t, INF), BOMB_TIMER) for t in own_blast}
-    own_until = {t: max(lethal_until.get(t, -1), BOMB_TIMER + EXPLOSION_EXTRA) for t in own_blast}
+    own_from = {
+        t: min(lethal_from.get(t, INF), HYPOTHETICAL_BOMB_TIMER)
+        for t in own_blast
+    }
+    own_until = {
+        t: max(
+            lethal_until.get(t, -1),
+            HYPOTHETICAL_BOMB_TIMER + EXPLOSION_EXTRA,
+        )
+        for t in own_blast
+    }
     hyp_from = dict(lethal_from)
     hyp_from.update(own_from)
     hyp_until = dict(lethal_until)
     hyp_until.update(own_until)
 
     def passable_hyp(tile, m):
-        lethal = hyp_from.get(tile, INF) < m <= hyp_until.get(tile, -1) or m <= explosions[tile]
+        lethal = is_lethal_at(
+            tile, m, hyp_from, hyp_until, explosions
+        )
         return field[tile] == 0 and tile not in bomb_positions and tile not in others_pos and not lethal
 
-    survivable, _, arrival = temporal_escape((x, y), passable_hyp, hyp_from, explosions)
+    survivable, _, arrival = temporal_escape(
+        (x, y),
+        passable_hyp,
+        hyp_from,
+        explosions,
+        lethal_until=hyp_until,
+        blocked_after_departure={(x, y)},
+    )
     bomb_safe = 1 if survivable else 0
 
     # post-drop safe exits: neighbors safe at time=1 under hypothetical windows
@@ -99,7 +126,15 @@ def state_to_features(game_state):
     crates = min(3, sum(1 for t in own_blast if field[t] == 1))
 
     opp_positions = [o[3] for o in others]
-    opp_dir = bfs_direction_to_nearest(field, (x, y), set(opp_positions), plain_walkable) if opp_positions else 4
+    opp_targets = set()
+    for ox, oy in opp_positions:
+        for dx, dy in DIRECTIONS:
+            tile = (ox + dx, oy + dy)
+            if plain_walkable(tile):
+                opp_targets.add(tile)
+    opp_dir = bfs_direction_to_nearest(
+        field, (x, y), opp_targets, plain_walkable
+    )
     opp_in_blast = 1 if any(pos in own_blast for pos in opp_positions) else 0
 
     danger_score = compute_danger_score(field, (x, y), bombs, explosions)
@@ -163,7 +198,8 @@ def compute_coin_score(field, pos, coins, bombs, explosions):
         return 0.0
     coin_targets = {(cx, cy) for cx, cy in coins}
     nearest = min(abs(cx - pos[0]) + abs(cy - pos[1]) for cx, cy in coin_targets)
-    reachable = bfs_direction_to_nearest(field, pos, coin_targets) is not None
+    coin_dir = bfs_direction_to_nearest(field, pos, coin_targets)
+    reachable = pos in coin_targets or coin_dir != 4
     density = local_density(pos, coins, radius=3)
     score = 0.65 * (1.0 - min(1.0, nearest / 12.0)) + 0.25 * (1.0 if reachable else 0.0) + 0.10 * density
     return min(1.0, max(0.0, score))
@@ -200,7 +236,11 @@ def compute_strategic_score(field, pos, coins):
                 safe_exits += 1
             if field[nx, ny] == 1:
                 near_crates += 1
-    center = 1.0 - min(1.0, (abs(x - field.shape[0] / 2) + abs(y - field.shape[1] / 2)) / 12.0)
+    center_x = (field.shape[0] - 1) / 2.0
+    center_y = (field.shape[1] - 1) / 2.0
+    center = 1.0 - min(
+        1.0, (abs(x - center_x) + abs(y - center_y)) / 12.0
+    )
     score = 0.25 * center + 0.30 * min(1.0, near_crates / 3.0) + 0.25 * min(1.0, safe_exits / 3.0) + 0.20 * min(1.0, len(coins) / 10.0)
     return min(1.0, score)
 
@@ -287,9 +327,44 @@ def lethal_windows(field, bombs, explosions):
     return lethal_from, lethal_until
 
 
-def temporal_escape(start, passable, lethal_from, explosions, max_m=None):
+def is_lethal_at(
+    tile,
+    minute,
+    lethal_from,
+    lethal_until,
+    explosions,
+):
+    """Whether ``tile`` is dangerous after the given future action.
+
+    A bomb reported with countdown ``t`` first becomes lethal at ``t + 1``;
+    the framework then keeps its explosion dangerous for one additional action.
+    """
+    return (
+        lethal_from.get(tile, INF)
+        < minute
+        <= lethal_until.get(tile, -1)
+        or (explosions[tile] > 0 and minute <= explosions[tile])
+    )
+
+
+def temporal_escape(
+    start,
+    passable,
+    lethal_from,
+    explosions,
+    max_m=None,
+    *,
+    lethal_until=None,
+    blocked_after_departure=(),
+):
     if max_m is None:
         max_m = BOMB_TIMER + EXPLOSION_EXTRA + 2
+    if lethal_until is None:
+        lethal_until = {
+            tile: deadline + EXPLOSION_EXTRA
+            for tile, deadline in lethal_from.items()
+        }
+    blocked_after_departure = set(blocked_after_departure)
 
     def eternally_safe(tile):
         return lethal_from.get(tile, INF) >= INF and explosions[tile] == 0
@@ -309,7 +384,19 @@ def temporal_escape(start, passable, lethal_from, explosions, max_m=None):
             continue
         moves = [(4, tile)] + [(i, (tile[0] + dx, tile[1] + dy)) for i, (dx, dy) in enumerate(DIRECTIONS)]
         for mv, nxt in moves:
-            ok = passable(nxt, m + 1) if mv != 4 else not (lethal_from.get(tile, INF) < m + 1 or m + 1 <= explosions[tile])
+            if mv == 4:
+                ok = not is_lethal_at(
+                    tile,
+                    m + 1,
+                    lethal_from,
+                    lethal_until,
+                    explosions,
+                )
+            else:
+                ok = (
+                    nxt not in blocked_after_departure
+                    and passable(nxt, m + 1)
+                )
             if ok and (nxt, m + 1) not in seen:
                 seen.add((nxt, m + 1))
                 queue.append((nxt, m + 1, mv if first is None else first))
