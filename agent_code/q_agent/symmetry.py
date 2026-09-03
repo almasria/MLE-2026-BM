@@ -233,19 +233,59 @@ def canonicalize_v2(features: tuple):
 # ---------------------------------------------------------------------------
 
 def transform_v3(features: tuple, g: D4Element) -> tuple:
-    obj, u, r, d, l, urg, safe, bsafe, crates, opp, oblast = features
+    """Apply D4 to the legacy v2/v3 feature prefix and leave the newer scalar
+    tactical features untouched. This keeps the Q-agent compatible when the
+    feature vector grows without changing the action-index contracts.
+    """
+    if len(features) <= 11:
+        obj, u, r, d, l, urg, safe, bsafe, crates, opp, oblast = features
+        nb = (u, r, d, l)
+        new_nb = [0] * N_DIRS
+        for i in range(N_DIRS):
+            new_nb[g.apply_dir(i)] = nb[i]
+        return (g.apply_dir(obj), *new_nb, urg, g.apply_dir(safe), bsafe, crates,
+                g.apply_dir(opp), oblast)
+
+    obj, u, r, d, l, urg, safe, bsafe, crates, opp, oblast = features[:11]
     nb = (u, r, d, l)
     new_nb = [0] * N_DIRS
     for i in range(N_DIRS):
         new_nb[g.apply_dir(i)] = nb[i]
-    return (g.apply_dir(obj), *new_nb, urg, g.apply_dir(safe), bsafe, crates,
-            g.apply_dir(opp), oblast)
+    transformed_prefix = (g.apply_dir(obj), *new_nb, urg, g.apply_dir(safe), bsafe,
+                          crates, g.apply_dir(opp), oblast)
+    return transformed_prefix + tuple(features[11:])
 
 
 def canonicalize_v3(features: tuple):
     best, best_g = features, IDENTITY
     for g in GROUP:
         t = transform_v3(features, g)
+        if t < best:
+            best, best_g = t, g
+    return best, best_g
+
+
+# ---------------------------------------------------------------------------
+# v4 features: (objective_dir, nb x4, urgency, safe_dir, bomb_opportunity,
+#               mobility).  Two direction components permute under g; urgency,
+#               bomb_opportunity and mobility are direction-invariant scalars.
+# ---------------------------------------------------------------------------
+
+def transform_v4(features: tuple, g: D4Element) -> tuple:
+    obj, u, r, d, l, urgency, safe, bomb_opp, mobility = features
+    nb = (u, r, d, l)
+    new_nb = [0] * N_DIRS
+    for i in range(N_DIRS):
+        new_nb[g.apply_dir(i)] = nb[i]
+    return (g.apply_dir(obj), *new_nb, urgency, g.apply_dir(safe),
+            bomb_opp, mobility)
+
+
+def canonicalize_v4(features: tuple):
+    """Orbit representative + the g mapping input to it (see canonicalize_v1)."""
+    best, best_g = features, IDENTITY
+    for g in GROUP:
+        t = transform_v4(features, g)
         if t < best:
             best, best_g = t, g
     return best, best_g

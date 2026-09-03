@@ -8,61 +8,44 @@ import numpy as np
 
 import events as e
 from .callbacks import ACTIONS, MODEL_FILE, canon, USE_SYMMETRY
+from .config import (
+    ALPHA,
+    ENTERED_DANGER,
+    EPSILON_DECAY,
+    EPSILON_END,
+    EPSILON_START,
+    ESCAPED_DANGER,
+    GAME_REWARDS,
+    GAMMA,
+    MOVED_AWAY_FROM_OBJECTIVE,
+    MOVED_TOWARD_OBJECTIVE,
+    SAFE_BOMB_MULTI_CRATE,
+    SAFE_BOMB_NEAR_CRATES,
+    SAFE_BOMB_NEAR_OPPONENT,
+    ENTERED_TRAP,
+    LEFT_TRAP,
+    STILL_IN_DANGER,
+    SUICIDAL_BOMB,
+    USELESS_BOMB,
+)
 from .features import state_to_features
 
-# --- Hyperparameters --------------------------------------------------------
-ALPHA = float(os.environ.get("Q_AGENT_ALPHA", "0.1"))
-GAMMA = float(os.environ.get("Q_AGENT_GAMMA", "0.9"))
-EPSILON_START = float(os.environ.get("Q_AGENT_EPS_START", "1.0"))
-EPSILON_END = 0.05
-EPSILON_DECAY = float(os.environ.get("Q_AGENT_EPS_DECAY", "0.995"))   # W2 lesson: 0.999 leaves eps=0.37 at round 1000 ->
-                        # greedy policy under-converged; 0.995 floors by ~600
-
-# --- Custom events (features v2 semantics) ----------------------------------
-MOVED_TOWARD_OBJECTIVE = "MOVED_TOWARD_OBJECTIVE"
-MOVED_AWAY_FROM_OBJECTIVE = "MOVED_AWAY_FROM_OBJECTIVE"
-ESCAPED_DANGER = "ESCAPED_DANGER"        # urgency >0 -> 0
-ENTERED_DANGER = "ENTERED_DANGER"        # danger 0 -> 1 (not via own bomb)
-SAFE_BOMB_NEAR_CRATES = "SAFE_BOMB_NEAR_CRATES"
-SAFE_BOMB_NEAR_OPPONENT = "SAFE_BOMB_NEAR_OPPONENT"
-SUICIDAL_BOMB = "SUICIDAL_BOMB"          # bombed with no escape route
-FOLLOWED_ESCAPE = "FOLLOWED_ESCAPE"      # in danger, moved along safe_dir
-IGNORED_ESCAPE = "IGNORED_ESCAPE"        # in danger, did something else
-SURVIVED_OWN_BOMB = "SURVIVED_OWN_BOMB"  # BOMB_EXPLODED without KILLED_SELF
-USELESS_BOMB = "USELESS_BOMB"            # safe bomb that hits nothing
-STILL_IN_DANGER = "STILL_IN_DANGER"      # every step spent inside a blast zone
-
-GAME_REWARDS = {
-    e.COIN_COLLECTED: 10.0,
-    e.CRATE_DESTROYED: 5.0,
-    e.COIN_FOUND: 3.0,
-    e.KILLED_SELF: -50.0,
-    e.GOT_KILLED: -25.0,
-    e.SURVIVED_ROUND: 5.0,
-    e.INVALID_ACTION: -2.0,
-    e.WAITED: -0.5,
-    MOVED_TOWARD_OBJECTIVE: 1.0,
-    MOVED_AWAY_FROM_OBJECTIVE: -1.0,
-    ESCAPED_DANGER: 3.0,
-    ENTERED_DANGER: -3.0,
-    STILL_IN_DANGER: -0.75,
-    SAFE_BOMB_NEAR_CRATES: 4.0,
-    SAFE_BOMB_NEAR_OPPONENT: 6.0,
-    SUICIDAL_BOMB: -10.0,
-    FOLLOWED_ESCAPE: 2.5,
-    IGNORED_ESCAPE: -2.5,
-    SURVIVED_OWN_BOMB: 6.0,
-    USELESS_BOMB: -2.0,
-    e.KILLED_OPPONENT: 25.0,     # stage 4, priced in already
-    e.OPPONENT_ELIMINATED: 2.0,
-}
+TRAINING_HISTORY_FILE = os.environ.get(
+    "Q_AGENT_HISTORY_PATH", "training_history.csv"
+)
 
 # ground-truth movement from the framework's own events (a failed move
 # raises INVALID_ACTION instead, so this never miscounts)
 MOVED_EVENTS = {e.MOVED_UP: 0, e.MOVED_RIGHT: 1, e.MOVED_DOWN: 2, e.MOVED_LEFT: 3}
 
-# v2 feature indices (keep in sync with features.py!)
-F_OBJ, F_DANGER, F_SAFE, F_BOMBSAFE, F_CRATES, F_OPP, F_OPPBLAST = 0, 5, 6, 7, 8, 9, 10
+# v4 feature layout is imported symbolically, so index drift cannot happen
+from .featuresv4 import (BOMB_CRATES, BOMB_CRATES_MANY, BOMB_EMPTY, BOMB_NONE,
+                         BOMB_OPPONENT,
+                         F_BOMB_OPPORTUNITY, F_MOBILITY, F_OBJECTIVE,
+                         F_SAFE_DIR, F_URGENCY, MOBILITY_TRAP, NO_DIR,
+                         URGENCY_SAFE)
+
+F_OBJ, F_DANGER, F_SAFE = F_OBJECTIVE, F_URGENCY, F_SAFE_DIR
 
 
 def setup_training(self):
@@ -81,38 +64,44 @@ def add_custom_events(old_f, action, new_f, events):
     'toward the objective' is a real-world statement (see symmetry notes)."""
     moved_dir = next((d for ev, d in MOVED_EVENTS.items() if ev in events), None)
 
-    # escape discipline: while in danger with a known way out, following it
-    # is rewarded and anything else is punished -- nothing competes with escape
-    if old_f[F_DANGER] > 0 and old_f[F_SAFE] != 4:
-        if moved_dir == old_f[F_SAFE]:
-            events.append(FOLLOWED_ESCAPE)
-        else:
-            events.append(IGNORED_ESCAPE)
-
-    if e.BOMB_EXPLODED in events and e.KILLED_SELF not in events:
-        events.append(SURVIVED_OWN_BOMB)
     if old_f[F_DANGER] > 0 and new_f is not None and new_f[F_DANGER] == 0:
         events.append(ESCAPED_DANGER)
-    if old_f[F_DANGER] == 0 and new_f is not None and new_f[F_DANGER] > 0 \
-            and action != 'BOMB':
+    # NOTE: no exemption for action == 'BOMB'. Entering danger costs -3 even
+    # when self-inflicted; symmetric with ESCAPED_DANGER +3, the pair cancels
+    # over any cycle (potential-based shaping), leaving only the per-step
+    # STILL_IN_DANGER cost. Self-created danger is thus never profitable
+    # by itself -- only its PRODUCTS (crates, opponents) pay.
+    if old_f[F_DANGER] == 0 and new_f is not None and new_f[F_DANGER] > 0:
         events.append(ENTERED_DANGER)
 
     if e.BOMB_DROPPED in events:
-        if old_f[F_BOMBSAFE] == 0:
+        opportunity = old_f[F_BOMB_OPPORTUNITY]
+        if opportunity == BOMB_NONE:
             events.append(SUICIDAL_BOMB)
+        elif opportunity == BOMB_OPPONENT:
+            events.append(SAFE_BOMB_NEAR_OPPONENT)
+        elif opportunity in (BOMB_CRATES, BOMB_CRATES_MANY):
+            # fires while the agent is merely PASSING a crate on its way to a
+            # coin, which is what makes opportunistic bombing learnable
+            events.append(SAFE_BOMB_NEAR_CRATES)
+            if opportunity == BOMB_CRATES_MANY:
+                events.append(SAFE_BOMB_MULTI_CRATE)
         else:
-            if old_f[F_CRATES] > 0:
-                events.append(SAFE_BOMB_NEAR_CRATES)
-            if old_f[F_OPPBLAST] == 1:
-                events.append(SAFE_BOMB_NEAR_OPPONENT)
-            if old_f[F_CRATES] == 0 and old_f[F_OPPBLAST] == 0:
-                events.append(USELESS_BOMB)
+            events.append(USELESS_BOMB)
+
+    # trap pressure: mobility collapses when walls, crates, bombs or opponents
+    # close in, and leaving early is much cheaper than escaping later
+    if new_f is not None:
+        if old_f[F_MOBILITY] != MOBILITY_TRAP and new_f[F_MOBILITY] == MOBILITY_TRAP:
+            events.append(ENTERED_TRAP)
+        elif old_f[F_MOBILITY] == MOBILITY_TRAP and new_f[F_MOBILITY] != MOBILITY_TRAP:
+            events.append(LEFT_TRAP)
 
     # objective shaping only while safe — while in danger, escaping rules
     if old_f[F_DANGER] > 0 and new_f is not None and new_f[F_DANGER] > 0:
         events.append(STILL_IN_DANGER)
 
-    if old_f[F_DANGER] == 0 and old_f[F_OBJ] != 4 and moved_dir is not None:
+    if old_f[F_DANGER] == URGENCY_SAFE and old_f[F_OBJ] != NO_DIR and moved_dir is not None:
         if moved_dir == old_f[F_OBJ]:
             events.append(MOVED_TOWARD_OBJECTIVE)
         elif e.COIN_COLLECTED not in events:
@@ -139,6 +128,20 @@ def game_events_occurred(self, old_game_state, self_action, new_game_state, even
 
 
 def end_of_round(self, last_game_state, last_action, events):
+    # Optional diagnostic (Q_AGENT_DEATH_LOG=1): record the circumstances of
+    # every self-kill. This is how the opponent-threat model was discovered:
+    # 24/24 deaths had an armed opponent within 2 tiles and no escape left.
+    if os.environ.get("Q_AGENT_DEATH_LOG") == "1" and e.KILLED_SELF in events \
+            and last_game_state is not None:
+        gs = last_game_state
+        x, y = gs['self'][3]
+        opp = [o[3] for o in gs['others']]
+        dmin = min((abs(ox - x) + abs(oy - y) for ox, oy in opp), default=99)
+        other_bombs = sum(1 for pos, _ in gs['bombs'] if pos != (x, y))
+        lf = state_to_features(gs)
+        with open("death_log.csv", "a") as fh:
+            fh.write(f"{gs['step']},{dmin},{other_bombs},{lf[F_DANGER]},"
+                     f"{lf[F_SAFE]},{lf[F_MOBILITY]},{last_action}\n")
     reward = reward_from_events(self, events)
     self.round_reward += reward
 
@@ -159,7 +162,7 @@ def end_of_round(self, last_game_state, last_action, events):
             f"Round {n}: avg reward (last 100) = {np.mean(self.reward_history[-100:]):.1f}, "
             f"avg coins = {np.mean(self.coins_history[-100:]):.2f}, "
             f"epsilon = {self.epsilon:.3f}, Q-table = {len(self.q_table)}")
-    with open("training_history.csv", "a") as fh:
+    with open(TRAINING_HISTORY_FILE, "a") as fh:
         fh.write(f"{self.run_tag},{int(USE_SYMMETRY)},{n},{self.round_reward},"
                  f"{self.round_coins},{self.epsilon:.4f},{len(self.q_table)}\n")
     self.round_reward = 0.0

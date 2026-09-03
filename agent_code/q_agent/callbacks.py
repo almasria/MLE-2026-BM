@@ -7,18 +7,31 @@ import random
 import numpy as np
 
 from .features import state_to_features
-from .symmetry import canonicalize_v3, IDENTITY
+from .symmetry import canonicalize_v4, IDENTITY
+from .featuresv4 import (BOMB_EMPTY, BOMB_NONE, F_BOMB_OPPORTUNITY, F_MOBILITY,
+                         F_URGENCY, MOBILITY_TRAP, URGENCY_IMMINENT,
+                         survivable_actions)
+
+# Empty bombs (survivable, hit nothing) are masked by default: they were the
+# near-wall drops observed vs opponents.  Bombs covering an opponent rank
+# BOMB_OPPONENT, so anti-opponent play is unaffected.  The cost is the rare
+# pre-placement tactic (bombing where an opponent WILL be); re-enable with
+# Q_AGENT_ALLOW_EMPTY_BOMB=1 to measure that trade-off.
+ALLOW_EMPTY_BOMB = os.environ.get("Q_AGENT_ALLOW_EMPTY_BOMB", "0") == "1"
 
 # --- Ablation switch (see week-2 experiment) --------------------------------
 USE_SYMMETRY = os.environ.get("Q_AGENT_SYMMETRY", "1") != "0"
 
 
 def canon(features):
-    return canonicalize_v3(features) if USE_SYMMETRY else (features, IDENTITY)
+    return canonicalize_v4(features) if USE_SYMMETRY else (features, IDENTITY)
 
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
-MODEL_FILE = "q_table_v3_sym.pkl" if USE_SYMMETRY else "q_table_v3_plain.pkl"
+DEFAULT_MODEL_FILE = (
+    "q_table_v4_sym.pkl" if USE_SYMMETRY else "q_table_v4_plain.pkl"
+)
+MODEL_FILE = os.environ.get("Q_AGENT_MODEL_PATH", DEFAULT_MODEL_FILE)
 
 
 def setup(self):
@@ -41,21 +54,34 @@ def allowed_actions(features, game_state):
     the rest. Moves into blocked tiles, BOMB without escape (bomb_safe=0),
     and BOMB while unavailable are never offered — to exploration OR argmax."""
     allowed = [i for i in range(4) if features[1 + i] == 1]
-    # WAIT is legal — except standing still inside a blast zone with a known
-    # way out, which is certain death, so it is never offered then
-    if not (features[5] == 3 and allowed):
+    # WAIT is legal — except standing still with a blast about to arrive and
+    # somewhere to run, which is certain death
+    if not (features[F_URGENCY] == URGENCY_IMMINENT and allowed):
         allowed.append(4)
     if not allowed:                                     # cornered: allow WAIT
         allowed.append(4)
-    bomb_available = game_state['self'][2]
-    if bomb_available and features[7] == 1:
+    # BOMB only when it is available AND survivable; bomb_opportunity already
+    # folds both conditions in (0 means unavailable or unsurvivable).
+    opportunity = features[F_BOMB_OPPORTUNITY]
+    if opportunity != BOMB_NONE and (opportunity != BOMB_EMPTY or ALLOW_EMPTY_BOMB):
         allowed.append(5)
+    # NOTE: mobility deliberately does NOT gate bombing here.  Measured: gating
+    # it cost 15 crates/round, because the tightest spots are exactly the
+    # crate-dense ones worth bombing, and bomb_opportunity has already proved
+    # an escape exists.  Mobility stays a feature (and a shaped event) so the
+    # agent can learn when a tight spot is worth it.
     return allowed
 
 
 def act(self, game_state: dict) -> str:
     features = state_to_features(game_state)
     allowed = allowed_actions(features, game_state)
+    # full-depth certain-death pruning: drop actions with NO survival line.
+    # If nothing survives (truly doomed), keep the shallow mask as-is.
+    deep = survivable_actions(game_state)
+    pruned = [a for a in allowed if a in deep]
+    if pruned:
+        allowed = pruned
 
     if random.random() < self.epsilon:
         return ACTIONS[random.choice(allowed)]
