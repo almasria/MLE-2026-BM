@@ -263,3 +263,29 @@ def canonicalize_v3(features: tuple):
         if t < best:
             best, best_g = t, g
     return best, best_g
+
+
+# ---------------------------------------------------------------------------
+# v4 features: (objective_dir, nb x4, urgency, safe_dir, bomb_opportunity,
+#               mobility).  Two direction components permute under g; urgency,
+#               bomb_opportunity and mobility are direction-invariant scalars.
+# ---------------------------------------------------------------------------
+
+def transform_v4(features: tuple, g: D4Element) -> tuple:
+    obj, u, r, d, l, urgency, safe, bomb_opp, mobility = features
+    nb = (u, r, d, l)
+    new_nb = [0] * N_DIRS
+    for i in range(N_DIRS):
+        new_nb[g.apply_dir(i)] = nb[i]
+    return (g.apply_dir(obj), *new_nb, urgency, g.apply_dir(safe),
+            bomb_opp, mobility)
+
+
+def canonicalize_v4(features: tuple):
+    """Orbit representative + the g mapping input to it (see canonicalize_v1)."""
+    best, best_g = features, IDENTITY
+    for g in GROUP:
+        t = transform_v4(features, g)
+        if t < best:
+            best, best_g = t, g
+    return best, best_g

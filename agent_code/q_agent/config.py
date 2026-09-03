@@ -16,6 +16,7 @@ MOVED_AWAY_FROM_OBJECTIVE = "MOVED_AWAY_FROM_OBJECTIVE"
 ESCAPED_DANGER = "ESCAPED_DANGER"
 ENTERED_DANGER = "ENTERED_DANGER"
 SAFE_BOMB_NEAR_CRATES = "SAFE_BOMB_NEAR_CRATES"
+SAFE_BOMB_MULTI_CRATE = "SAFE_BOMB_MULTI_CRATE"
 SAFE_BOMB_NEAR_OPPONENT = "SAFE_BOMB_NEAR_OPPONENT"
 SUICIDAL_BOMB = "SUICIDAL_BOMB"
 FOLLOWED_ESCAPE = "FOLLOWED_ESCAPE"
@@ -23,6 +24,8 @@ IGNORED_ESCAPE = "IGNORED_ESCAPE"
 SURVIVED_OWN_BOMB = "SURVIVED_OWN_BOMB"
 USELESS_BOMB = "USELESS_BOMB"
 STILL_IN_DANGER = "STILL_IN_DANGER"
+ENTERED_TRAP = "ENTERED_TRAP"
+LEFT_TRAP = "LEFT_TRAP"
 
 GAME_REWARDS = {
     e.COIN_COLLECTED: 10.0,
@@ -38,12 +41,20 @@ GAME_REWARDS = {
     ESCAPED_DANGER: 3.0,
     ENTERED_DANGER: -3.0,
     STILL_IN_DANGER: -0.75,
+    ENTERED_TRAP: -2.0,
+    LEFT_TRAP: 1.5,
     SAFE_BOMB_NEAR_CRATES: 4.0,
+    SAFE_BOMB_MULTI_CRATE: 3.0,   # on top: rewards choosing the richer spot
     SAFE_BOMB_NEAR_OPPONENT: 6.0,
     SUICIDAL_BOMB: -10.0,
-    FOLLOWED_ESCAPE: 2.5,
-    IGNORED_ESCAPE: -2.5,
-    SURVIVED_OWN_BOMB: 6.0,
+    # FOLLOWED_ESCAPE / IGNORED_ESCAPE / SURVIVED_OWN_BOMB were REMOVED.
+    # They rewarded escaping danger the agent created itself, which summed to
+    # ~+12 per bomb-escape cycle: a farmable reward pump (observed: the agent
+    # parked in a corner bombing and escaping forever). Escape execution is
+    # now enforced structurally by survivability pruning in the action mask,
+    # so no reward pressure is needed. The remaining danger terms are
+    # symmetric (+3/-3 = a potential over the danger flag) plus a per-step
+    # cost, so ANY danger cycle nets <= 0 unless real value is produced.
     USELESS_BOMB: -2.0,
     e.KILLED_OPPONENT: 25.0,
     e.OPPONENT_ELIMINATED: 2.0,

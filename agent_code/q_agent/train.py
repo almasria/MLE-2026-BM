@@ -15,17 +15,17 @@ from .config import (
     EPSILON_END,
     EPSILON_START,
     ESCAPED_DANGER,
-    FOLLOWED_ESCAPE,
     GAME_REWARDS,
     GAMMA,
-    IGNORED_ESCAPE,
     MOVED_AWAY_FROM_OBJECTIVE,
     MOVED_TOWARD_OBJECTIVE,
+    SAFE_BOMB_MULTI_CRATE,
     SAFE_BOMB_NEAR_CRATES,
     SAFE_BOMB_NEAR_OPPONENT,
+    ENTERED_TRAP,
+    LEFT_TRAP,
     STILL_IN_DANGER,
     SUICIDAL_BOMB,
-    SURVIVED_OWN_BOMB,
     USELESS_BOMB,
 )
 from .features import state_to_features
@@ -38,8 +38,14 @@ TRAINING_HISTORY_FILE = os.environ.get(
 # raises INVALID_ACTION instead, so this never miscounts)
 MOVED_EVENTS = {e.MOVED_UP: 0, e.MOVED_RIGHT: 1, e.MOVED_DOWN: 2, e.MOVED_LEFT: 3}
 
-# v2 feature indices (keep in sync with features.py!)
-F_OBJ, F_DANGER, F_SAFE, F_BOMBSAFE, F_CRATES, F_OPP, F_OPPBLAST = 0, 5, 6, 7, 8, 9, 10
+# v4 feature layout is imported symbolically, so index drift cannot happen
+from .featuresv4 import (BOMB_CRATES, BOMB_CRATES_MANY, BOMB_EMPTY, BOMB_NONE,
+                         BOMB_OPPONENT,
+                         F_BOMB_OPPORTUNITY, F_MOBILITY, F_OBJECTIVE,
+                         F_SAFE_DIR, F_URGENCY, MOBILITY_TRAP, NO_DIR,
+                         URGENCY_SAFE)
+
+F_OBJ, F_DANGER, F_SAFE = F_OBJECTIVE, F_URGENCY, F_SAFE_DIR
 
 
 def setup_training(self):
@@ -58,38 +64,44 @@ def add_custom_events(old_f, action, new_f, events):
     'toward the objective' is a real-world statement (see symmetry notes)."""
     moved_dir = next((d for ev, d in MOVED_EVENTS.items() if ev in events), None)
 
-    # escape discipline: while in danger with a known way out, following it
-    # is rewarded and anything else is punished -- nothing competes with escape
-    if old_f[F_DANGER] > 0 and old_f[F_SAFE] != 4:
-        if moved_dir == old_f[F_SAFE]:
-            events.append(FOLLOWED_ESCAPE)
-        else:
-            events.append(IGNORED_ESCAPE)
-
-    if e.BOMB_EXPLODED in events and e.KILLED_SELF not in events:
-        events.append(SURVIVED_OWN_BOMB)
     if old_f[F_DANGER] > 0 and new_f is not None and new_f[F_DANGER] == 0:
         events.append(ESCAPED_DANGER)
-    if old_f[F_DANGER] == 0 and new_f is not None and new_f[F_DANGER] > 0 \
-            and action != 'BOMB':
+    # NOTE: no exemption for action == 'BOMB'. Entering danger costs -3 even
+    # when self-inflicted; symmetric with ESCAPED_DANGER +3, the pair cancels
+    # over any cycle (potential-based shaping), leaving only the per-step
+    # STILL_IN_DANGER cost. Self-created danger is thus never profitable
+    # by itself -- only its PRODUCTS (crates, opponents) pay.
+    if old_f[F_DANGER] == 0 and new_f is not None and new_f[F_DANGER] > 0:
         events.append(ENTERED_DANGER)
 
     if e.BOMB_DROPPED in events:
-        if old_f[F_BOMBSAFE] == 0:
+        opportunity = old_f[F_BOMB_OPPORTUNITY]
+        if opportunity == BOMB_NONE:
             events.append(SUICIDAL_BOMB)
+        elif opportunity == BOMB_OPPONENT:
+            events.append(SAFE_BOMB_NEAR_OPPONENT)
+        elif opportunity in (BOMB_CRATES, BOMB_CRATES_MANY):
+            # fires while the agent is merely PASSING a crate on its way to a
+            # coin, which is what makes opportunistic bombing learnable
+            events.append(SAFE_BOMB_NEAR_CRATES)
+            if opportunity == BOMB_CRATES_MANY:
+                events.append(SAFE_BOMB_MULTI_CRATE)
         else:
-            if old_f[F_CRATES] > 0:
-                events.append(SAFE_BOMB_NEAR_CRATES)
-            if old_f[F_OPPBLAST] == 1:
-                events.append(SAFE_BOMB_NEAR_OPPONENT)
-            if old_f[F_CRATES] == 0 and old_f[F_OPPBLAST] == 0:
-                events.append(USELESS_BOMB)
+            events.append(USELESS_BOMB)
+
+    # trap pressure: mobility collapses when walls, crates, bombs or opponents
+    # close in, and leaving early is much cheaper than escaping later
+    if new_f is not None:
+        if old_f[F_MOBILITY] != MOBILITY_TRAP and new_f[F_MOBILITY] == MOBILITY_TRAP:
+            events.append(ENTERED_TRAP)
+        elif old_f[F_MOBILITY] == MOBILITY_TRAP and new_f[F_MOBILITY] != MOBILITY_TRAP:
+            events.append(LEFT_TRAP)
 
     # objective shaping only while safe — while in danger, escaping rules
     if old_f[F_DANGER] > 0 and new_f is not None and new_f[F_DANGER] > 0:
         events.append(STILL_IN_DANGER)
 
-    if old_f[F_DANGER] == 0 and old_f[F_OBJ] != 4 and moved_dir is not None:
+    if old_f[F_DANGER] == URGENCY_SAFE and old_f[F_OBJ] != NO_DIR and moved_dir is not None:
         if moved_dir == old_f[F_OBJ]:
             events.append(MOVED_TOWARD_OBJECTIVE)
         elif e.COIN_COLLECTED not in events:
@@ -116,6 +128,20 @@ def game_events_occurred(self, old_game_state, self_action, new_game_state, even
 
 
 def end_of_round(self, last_game_state, last_action, events):
+    # Optional diagnostic (Q_AGENT_DEATH_LOG=1): record the circumstances of
+    # every self-kill. This is how the opponent-threat model was discovered:
+    # 24/24 deaths had an armed opponent within 2 tiles and no escape left.
+    if os.environ.get("Q_AGENT_DEATH_LOG") == "1" and e.KILLED_SELF in events \
+            and last_game_state is not None:
+        gs = last_game_state
+        x, y = gs['self'][3]
+        opp = [o[3] for o in gs['others']]
+        dmin = min((abs(ox - x) + abs(oy - y) for ox, oy in opp), default=99)
+        other_bombs = sum(1 for pos, _ in gs['bombs'] if pos != (x, y))
+        lf = state_to_features(gs)
+        with open("death_log.csv", "a") as fh:
+            fh.write(f"{gs['step']},{dmin},{other_bombs},{lf[F_DANGER]},"
+                     f"{lf[F_SAFE]},{lf[F_MOBILITY]},{last_action}\n")
     reward = reward_from_events(self, events)
     self.round_reward += reward
 

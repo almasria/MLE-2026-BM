@@ -8,9 +8,11 @@ experiment runner from copying files over tracked source code.
 import os
 
 
-FEATURE_VERSION = os.environ.get("Q_AGENT_FEATURE_VERSION", "v3")
+FEATURE_VERSION = os.environ.get("Q_AGENT_FEATURE_VERSION", "v4")
 
-if FEATURE_VERSION == "v3":
+if FEATURE_VERSION == "v4":
+    from .featuresv4 import state_to_features
+elif FEATURE_VERSION == "v3":
     from .featuresv3 import state_to_features
 else:
     raise ValueError(
