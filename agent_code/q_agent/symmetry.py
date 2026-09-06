@@ -289,3 +289,20 @@ def canonicalize_v4(features: tuple):
         if t < best:
             best, best_g = t, g
     return best, best_g
+
+
+# ---------------------------------------------------------------------------
+# v5 features: v4 + engagement (an invariant scalar).
+# ---------------------------------------------------------------------------
+
+def transform_v5(features: tuple, g: D4Element) -> tuple:
+    return transform_v4(features[:9], g) + (features[9],)
+
+
+def canonicalize_v5(features: tuple):
+    best, best_g = features, IDENTITY
+    for g in GROUP:
+        t = transform_v5(features, g)
+        if t < best:
+            best, best_g = t, g
+    return best, best_g
