@@ -26,11 +26,17 @@ USELESS_BOMB = "USELESS_BOMB"
 STILL_IN_DANGER = "STILL_IN_DANGER"
 ENTERED_TRAP = "ENTERED_TRAP"
 LEFT_TRAP = "LEFT_TRAP"
+VULNERABLE = "VULNERABLE"
 
 GAME_REWARDS = {
     e.COIN_COLLECTED: 10.0,
-    e.CRATE_DESTROYED: 5.0,
-    e.COIN_FOUND: 3.0,
+    # CRATE ECONOMY (rebalanced): in the tournament scenario 9 coins hide
+    # among ~132 crates, so a crate is worth ~0.07 real points. The old values
+    # (5 per crate + 4 + 3 at the drop = +22 for a triple bomb) outweighed a
+    # real coin (+10) and taught the agent to walk PAST coins to bomb crates.
+    # Value now lives where the points are: revealing a coin, not the crate.
+    e.CRATE_DESTROYED: 1.0,
+    e.COIN_FOUND: 5.0,
     e.KILLED_SELF: -50.0,
     e.GOT_KILLED: -25.0,
     e.SURVIVED_ROUND: 5.0,
@@ -43,8 +49,9 @@ GAME_REWARDS = {
     STILL_IN_DANGER: -0.75,
     ENTERED_TRAP: -2.0,
     LEFT_TRAP: 1.5,
-    SAFE_BOMB_NEAR_CRATES: 4.0,
-    SAFE_BOMB_MULTI_CRATE: 3.0,   # on top: rewards choosing the richer spot
+    VULNERABLE: -1.0,   # v5: unarmed within reach of an armed opponent
+    SAFE_BOMB_NEAR_CRATES: 1.5,
+    SAFE_BOMB_MULTI_CRATE: 1.5,   # on top: still prefers the richer spot
     SAFE_BOMB_NEAR_OPPONENT: 6.0,
     SUICIDAL_BOMB: -10.0,
     # FOLLOWED_ESCAPE / IGNORED_ESCAPE / SURVIVED_OWN_BOMB were REMOVED.

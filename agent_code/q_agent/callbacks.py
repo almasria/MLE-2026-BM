@@ -6,11 +6,10 @@ import random
 
 import numpy as np
 
-from .features import state_to_features
-from .symmetry import canonicalize_v4, IDENTITY
-from .featuresv4 import (BOMB_EMPTY, BOMB_NONE, F_BOMB_OPPORTUNITY, F_MOBILITY,
-                         F_URGENCY, MOBILITY_TRAP, URGENCY_IMMINENT,
-                         survivable_actions)
+from .features import (BOMB_EMPTY, BOMB_NONE, F_BOMB_OPPORTUNITY, F_MOBILITY,
+                       F_URGENCY, MOBILITY_TRAP, MODEL_BASENAME, URGENCY_IMMINENT,
+                       canonicalize, state_to_features, survivable_actions)
+from .symmetry import IDENTITY
 
 # Empty bombs (survivable, hit nothing) are masked by default: they were the
 # near-wall drops observed vs opponents.  Bombs covering an opponent rank
@@ -24,13 +23,11 @@ USE_SYMMETRY = os.environ.get("Q_AGENT_SYMMETRY", "1") != "0"
 
 
 def canon(features):
-    return canonicalize_v4(features) if USE_SYMMETRY else (features, IDENTITY)
+    return canonicalize(features) if USE_SYMMETRY else (features, IDENTITY)
 
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
-DEFAULT_MODEL_FILE = (
-    "q_table_v4_sym.pkl" if USE_SYMMETRY else "q_table_v4_plain.pkl"
-)
+DEFAULT_MODEL_FILE = f"{MODEL_BASENAME}_{'sym' if USE_SYMMETRY else 'plain'}.pkl"
 MODEL_FILE = os.environ.get("Q_AGENT_MODEL_PATH", DEFAULT_MODEL_FILE)
 
 

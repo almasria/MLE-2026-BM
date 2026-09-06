@@ -24,6 +24,7 @@ from .config import (
     SAFE_BOMB_NEAR_OPPONENT,
     ENTERED_TRAP,
     LEFT_TRAP,
+    VULNERABLE,
     STILL_IN_DANGER,
     SUICIDAL_BOMB,
     USELESS_BOMB,
@@ -39,11 +40,11 @@ TRAINING_HISTORY_FILE = os.environ.get(
 MOVED_EVENTS = {e.MOVED_UP: 0, e.MOVED_RIGHT: 1, e.MOVED_DOWN: 2, e.MOVED_LEFT: 3}
 
 # v4 feature layout is imported symbolically, so index drift cannot happen
-from .featuresv4 import (BOMB_CRATES, BOMB_CRATES_MANY, BOMB_EMPTY, BOMB_NONE,
-                         BOMB_OPPONENT,
-                         F_BOMB_OPPORTUNITY, F_MOBILITY, F_OBJECTIVE,
-                         F_SAFE_DIR, F_URGENCY, MOBILITY_TRAP, NO_DIR,
-                         URGENCY_SAFE)
+from .features import (BOMB_CRATES, BOMB_CRATES_MANY, BOMB_EMPTY, BOMB_NONE,
+                       BOMB_OPPONENT, ENGAGE_NO_ADVANTAGE, F_ENGAGEMENT,
+                       F_BOMB_OPPORTUNITY, F_MOBILITY, F_OBJECTIVE,
+                       F_SAFE_DIR, F_URGENCY, MOBILITY_TRAP, NO_DIR,
+                       URGENCY_SAFE)
 
 F_OBJ, F_DANGER, F_SAFE = F_OBJECTIVE, F_URGENCY, F_SAFE_DIR
 
@@ -88,6 +89,13 @@ def add_custom_events(old_f, action, new_f, events):
                 events.append(SAFE_BOMB_MULTI_CRATE)
         else:
             events.append(USELESS_BOMB)
+
+    # v5: standing UNARMED next to an ARMED opponent is a bad state to be in
+    # (state-only penalty, potential-style: no cycle can farm it)
+    if F_ENGAGEMENT is not None and new_f is not None \
+            and new_f[F_ENGAGEMENT] == ENGAGE_NO_ADVANTAGE \
+            and new_f[F_BOMB_OPPORTUNITY] == BOMB_NONE:
+        events.append(VULNERABLE)
 
     # trap pressure: mobility collapses when walls, crates, bombs or opponents
     # close in, and leaving early is much cheaper than escaping later
