@@ -1,14 +1,4 @@
-"""
-callbacks.py — Model B: Deep Q-Network agent (stage 1: coin collection).
-
-DESIGN PRINCIPLE: this agent consumes the SAME information as q_agent
-(direction to nearest coin + neighbor walkability), just encoded as a
-float vector for a neural network instead of a lookup key for a table.
-That makes q_agent vs dqn_agent a controlled comparison: same features,
-same rewards, different function approximator.
-
-Requires: torch (add to requirements.txt if you submit this agent!).
-"""
+"""callbacks.py — DQN agent using feature engineering v4."""
 
 import os
 import random
@@ -18,37 +8,42 @@ import torch
 import torch.nn as nn
 
 from .features import state_to_features
-import events as e
-
+from .featuresv5 import (
+    F_URGENCY,
+    F_BOMB_OPPORTUNITY,
+    BOMB_NONE,
+    BOMB_EMPTY,
+    URGENCY_IMMINENT,
+    survivable_actions,
+    F_ENGAGEMENT,
+    ENGAGE_ADVANTAGE,
+)
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
 
-MODEL_FILE = "dqn_model.pt"
+MODEL_FILE = os.environ.get(
+    "DQN_MODEL_PATH",
+    "dqn_model_v5.pt"
+)
 
-# features.py returns:
-# 0: objective direction
-# 1-4: neighbor safety
-# 5: urgency
-# 6: escape direction
-# 7: bomb safety
-# 8: crates in range
-# 9: opponent direction
-# 10: opponent in blast
-FEATURE_DIM = 11
+FEATURE_DIM = 10
+ACTION_DIM = len(ACTIONS)
+
+ALLOW_EMPTY_BOMB = (
+    os.environ.get("DQN_ALLOW_EMPTY_BOMB", "0") == "1"
+)
 
 
 class QNetwork(nn.Module):
-    """Small MLP: 11 feature values -> 6 action Q-values."""
-
-    def __init__(self, in_dim=FEATURE_DIM, n_actions=len(ACTIONS)):
+    def __init__(self):
         super().__init__()
 
         self.net = nn.Sequential(
-            nn.Linear(in_dim, 64),
+            nn.Linear(FEATURE_DIM, 64),
             nn.ReLU(),
             nn.Linear(64, 64),
             nn.ReLU(),
-            nn.Linear(64, n_actions),
+            nn.Linear(64, ACTION_DIM),
         )
 
     def forward(self, x):
@@ -56,147 +51,136 @@ class QNetwork(nn.Module):
 
 
 def setup(self):
-    """Called once before the first round."""
+    self.device = torch.device(
+        "cuda" if torch.cuda.is_available() else "cpu"
+    )
 
-    self.device = torch.device("cpu")
-
-    self.q_net = QNetwork().to(self.device)
+    self.model = QNetwork().to(self.device)
 
     if os.path.isfile(MODEL_FILE):
-        self.q_net.load_state_dict(
-            torch.load(MODEL_FILE, map_location=self.device)
+        self.model.load_state_dict(
+            torch.load(
+                MODEL_FILE,
+                map_location=self.device,
+                weights_only=True,
+            )
         )
-        self.logger.info("Loaded trained DQN weights.")
+        self.logger.info(
+            f"Loaded DQN model from {MODEL_FILE}"
+        )
     else:
-        self.logger.info("No saved DQN model found — starting fresh.")
+        self.logger.info(
+            "No saved DQN model found — starting from scratch."
+        )
 
-    self.q_net.eval()
+    self.model.eval()
 
-    # Test statistics
-    self.test_round = None
-    self.test_coins = 0
-    self.test_start_coins = 0
-    self.test_survived = 0
+    if self.train:
+        self.epsilon = 1.0
+    else:
+        self.epsilon = float(
+            os.environ.get("DQN_PLAY_EPS", "0.0")
+        )
 
-    # Same play-mode exploration idea as q_agent.
-    self.epsilon = (
-        float(os.environ.get("DQN_PLAY_EPS", "0.02"))
-        if not self.train
-        else 1.0
-    )
+    self.eval_round_coins = 0
 
 
 def allowed_actions(features, game_state):
     """
-    Same safety mask as q_agent.
+    Shallow v4 action mask.
 
-    Prevent:
-      - walking into blocked/unsafe tiles
-      - WAIT while urgently trapped in danger
-      - BOMB when no bomb is available
-      - BOMB when no escape is possible
+    This matches the q_agent's basic safety constraints:
+      - only enter safe neighbours
+      - don't WAIT when danger is imminent if a move exists
+      - only allow bombs when v4 considers them survivable
     """
 
-    # Movement actions
     allowed = [
-        i for i in range(4)
+        i
+        for i in range(4)
         if features[1 + i] == 1
     ]
 
-    # WAIT
-    #
-    # If urgency == 3 and there is a possible movement action,
-    # waiting is considered obviously dangerous.
-    if not (features[5] == 3 and allowed):
+    # When danger is imminent, prefer an actual escape move.
+    if not (
+        features[F_URGENCY] == URGENCY_IMMINENT
+        and allowed
+    ):
         allowed.append(4)
 
-    # Cornered -> WAIT remains available
     if not allowed:
         allowed.append(4)
 
-    # BOMB
-    bomb_available = game_state['self'][2]
+    opportunity = features[F_BOMB_OPPORTUNITY]
 
-    if bomb_available and features[7] == 1:
+    if (
+        opportunity != BOMB_NONE
+        and (
+            opportunity != BOMB_EMPTY
+            or ALLOW_EMPTY_BOMB
+        )
+    ):
         allowed.append(5)
 
     return allowed
 
 
 def act(self, game_state: dict) -> str:
-    """Choose the highest-valued safe action."""
-
-    # Test coin counter
-    if not self.train:
-        current_round = game_state['round']
-        current_coins = set(game_state['coins'])
-
-        if not hasattr(self, "_test_round"):
-            self._test_round = current_round
-            self._previous_coins = current_coins
-            self._round_coins = 0
-
-        elif current_round != self._test_round:
-            self.logger.info(
-                f"TEST ROUND {self._test_round}: "
-                f"coins_collected={self._round_coins}"
-            )
-
-            self._test_round = current_round
-            self._previous_coins = current_coins
-            self._round_coins = 0
-
-        else:
-            collected = len(self._previous_coins - current_coins)
-
-            if collected > 0:
-                self._round_coins += collected
-
-            self._previous_coins = current_coins
-
-    # Normal DQN action selection
     features = state_to_features(game_state)
 
-    allowed = allowed_actions(features, game_state)
-
-    if random.random() < self.epsilon:
-        return ACTIONS[random.choice(allowed)]
-
-    with torch.no_grad():
-        x = torch.from_numpy(
-            np.asarray(features, dtype=np.float32)
-        ).unsqueeze(0).to(self.device)
-
-        q_values = self.q_net(x).squeeze(0).cpu().numpy()
-
-    best_action = max(
-        allowed,
-        key=lambda action: q_values[action]
+    allowed = allowed_actions(
+        features,
+        game_state,
     )
+
+    # Full-depth death avoidance, same as q_agent.
+    deep = survivable_actions(game_state)
 
     self.logger.debug(
         f"features={features} "
-        f"allowed={allowed} "
-        f"coins={len(game_state['coins'])} "
+        f"shallow={allowed} "
+        f"deep={deep}"
+    )
+
+    pruned = [
+        a for a in allowed
+        if a in deep
+    ]
+
+    if pruned:
+        allowed = pruned
+
+    # Exploration during training.
+    if random.random() < self.epsilon:
+        action = random.choice(allowed)
+
+        self.logger.debug(
+            f"{features} allowed={allowed} "
+            f"epsilon={self.epsilon:.3f} "
+            f"-> {ACTIONS[action]}"
+        )
+
+        return ACTIONS[action]
+
+    # Neural-network action selection.
+    state = torch.tensor(
+        features,
+        dtype=torch.float32,
+        device=self.device,
+    ).unsqueeze(0)
+
+    with torch.no_grad():
+        q_values = self.model(state)[0].cpu().numpy()
+
+    best_action = max(
+        allowed,
+        key=lambda a: q_values[a]
+    )
+
+    self.logger.debug(
+        f"{features} allowed={allowed} "
         f"Q={np.round(q_values, 2)} "
         f"-> {ACTIONS[best_action]}"
     )
 
     return ACTIONS[best_action]
-
-def end_of_round(self, last_game_state, last_action, events):
-    """Print statistics after each test round."""
-
-    if self.train:
-        return
-
-    self.test_rounds += 1
-
-    if e.SURVIVED_ROUND in events:
-        self.test_wins += 1
-
-    self.logger.info(
-        f"TEST ROUND {self.test_rounds}: "
-        f"total_coins={self.test_coins} "
-        f"wins={self.test_wins}"
-    )
