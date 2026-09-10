@@ -11,8 +11,11 @@ import unittest
 
 import numpy as np
 
-from agent_code.q_agent import featuresv4 as f
-from agent_code.q_agent.symmetry import GROUP, canonicalize_v4, transform_v4
+import importlib
+
+f = importlib.import_module("agent_code.RL-Team.featuresv4")
+_sym = importlib.import_module("agent_code.RL-Team.symmetry")
+GROUP, canonicalize_v4, transform_v4 = _sym.GROUP, _sym.canonicalize_v4, _sym.transform_v4
 
 
 def open_field(size=9):
@@ -29,7 +32,7 @@ def game_state(field, position, *, coins=(), bombs=(), others=(),
     return {
         'round': 1, 'step': 1, 'field': field, 'bombs': list(bombs),
         'explosion_map': explosions, 'coins': list(coins),
-        'self': ('q_agent', 0, bomb_available, position),
+        'self': ('RL-Team', 0, bomb_available, position),
         'others': [(f'opponent_{i}', 0, True, p) for i, p in enumerate(others)],
         'user_input': None,
     }

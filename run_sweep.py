@@ -1,32 +1,25 @@
 #!/usr/bin/env python3
-"""
-run_sweep.py — fair hyperparameter sweeps for q_agent.
+"""Hyperparameter sweeps for RL-Team.
 
-For EACH value x EACH seed the agent trains FRESH through the full curriculum
-(so the swept parameter is the only difference between runs), then plays 100
-evaluation rounds against three rule_based agents. Every trained table is
-archived and one summary row is written to results/sweep_summary.csv.
+For each (value, seed) the agent trains from scratch through the full
+curriculum, so the swept parameter is the only difference between runs, then
+plays 100 evaluation rounds against three rule_based agents. Trained tables
+are archived in results/sweep_models/ and one row per run is appended to
+results/sweep_summary.csv.
 
-Safety properties of this version:
-  * NEVER touches your real table. Each run trains into a scratch file via
-    the agent's Q_AGENT_MODEL_PATH override (agent_code/q_agent/sweep_*.pkl),
-    so q_table_v5_sym.pkl (the tournament model) is left alone.
-  * Every stage has a time limit (--stage-timeout, default 3 h). A stage that
-    exceeds it is killed, the run is recorded as TIMEOUT, and the sweep
-    continues with the next run instead of hanging forever.
-  * Resumable: (value, seed) pairs already in the summary CSV are skipped, so
-    a killed sweep restarts only the unfinished work.
-  * Progress is visible: each stage streams to results/sweep_logs/<run>_<stage>.log
-    and prints its elapsed time when done. If a stage's log stops growing for
-    a long time, that stage is stuck.
+  * Runs train into scratch files (Q_AGENT_MODEL_PATH); the regular model
+    file is never touched.
+  * Each stage has a time limit (--stage-timeout, hours); a run that exceeds
+    it is recorded as "timeout" and the sweep continues.
+  * Completed (value, seed) pairs found in the summary are skipped, so an
+    interrupted sweep resumes where it stopped.
+  * Stage output streams to results/sweep_logs/ with elapsed times printed.
 
-Usage (repo root):
     python run_sweep.py --param Q_AGENT_GAMMA --values 0.9 0.95 --seeds 2
     python run_sweep.py --param Q_AGENT_ALPHA --values 0.05 0.1 0.2 --seeds 2
-    python run_sweep.py --param Q_AGENT_GAMMA --values 0.9 --seeds 1 --scale 0.02   # 1-min plumbing check
+    python run_sweep.py --param Q_AGENT_GAMMA --values 0.9 --seeds 1 --scale 0.02
 
-Read results in results/sweep_summary.csv; compare the MEAN score across
-seeds per value (printed at the end), never a single run.
+Compare the mean score across seeds per value, not single runs.
 """
 
 import argparse
@@ -40,10 +33,9 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-AGENT_DEFAULT = "q_agent"
+AGENT_DEFAULT = "RL-Team"
 
-# (scenario, opponents, rounds, eps_start or None for fresh 1.0) -- ends on the
-# tournament benchmark opponent, like train_tournament.py
+# (scenario, opponents, rounds, eps_start or None for a fresh 1.0)
 CURRICULUM = [
     ("coin-heaven", [], 400, None),
     ("loot-crate", [], 3000, "0.3"),
@@ -111,10 +103,8 @@ def main():
             scratch_name = f"sweep_{tag}.pkl".replace("=", "_")
             scratch = agent_dir / scratch_name
             if scratch.exists():
-                scratch.unlink()                      # fresh start for THIS run only
+                scratch.unlink()
 
-            # the agent writes/reads its table relative to its own folder, so the
-            # override is just the file name; the real q_table_v5_sym.pkl is untouched
             env = dict(os.environ,
                        Q_AGENT_SEED=str(seed),
                        Q_AGENT_RUN_TAG=tag,

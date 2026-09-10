@@ -1,31 +1,21 @@
 #!/usr/bin/env python3
-"""
-train_tournament.py — the complete q_agent training pipeline.
+"""Curriculum training pipeline for RL-Team.
 
-ONE Q-TABLE, GROWN IN STAGES.  Every stage loads the table left by the
-previous stage and adds to it, so the ORDER matters and the stages are not
-alternatives.  Cheap solo boards teach navigation and safe bombing first;
-opponents are introduced only once that base exists.
+One Q-table is grown in stages: each stage loads the table left by the
+previous one, so the order matters. Solo boards teach navigation and safe
+bombing first; opponents are introduced afterwards. After every stage the
+agent is evaluated against three rule_based agents and the table is
+checkpointed to results/checkpoints/, so a stage that degrades performance
+can be rolled back.
 
-Run the whole thing (hours -- start it before bed):
+    python train_tournament.py                 # full run (several hours)
+    python train_tournament.py --from-stage 3  # resume after an interruption
+    python train_tournament.py --fresh         # delete the table and start over
+    python train_tournament.py --dry-run       # print the plan only
+    python train_tournament.py --scale 0.02    # quick plumbing check
+    python train_tournament.py --selfplay      # append the self-play stage
 
-    python train_tournament.py
-
-Resume after an interruption (nothing is lost; the table is saved every round):
-
-    python train_tournament.py --from-stage 3
-
-See the plan without running it:
-
-    python train_tournament.py --dry-run
-
-Quick end-to-end check that the pipeline works (a few minutes, weak agent):
-
-    python train_tournament.py --scale 0.02
-
-After each stage the script evaluates the agent, prints a one-line report and
-copies the table to results/checkpoints/, so a stage that makes things WORSE
-can be rolled back by copying its predecessor over the model file.
+The model file follows Q_AGENT_FEATURE_VERSION (default v5).
 """
 
 import argparse
@@ -36,9 +26,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-AGENT = "q_agent"
+AGENT = "RL-Team"
 AGENT_DIR = Path("agent_code") / AGENT
-# the model file follows the active feature version (Q_AGENT_FEATURE_VERSION)
 _VERSION = os.environ.get("Q_AGENT_FEATURE_VERSION", "v5")
 MODEL = AGENT_DIR / f"q_table_{_VERSION}_sym.pkl"
 CHECKPOINTS = Path("results/checkpoints")
@@ -46,23 +35,23 @@ CHECKPOINTS = Path("results/checkpoints")
 # (name, scenario, opponents, rounds, epsilon_start, why)
 STAGES = [
     ("1-coins", "coin-heaven", [], 600, "1.0",
-     "navigation only: walk to coins, no bombs needed"),
+     "navigation: walk to coins"),
     ("2-crates", "loot-crate", [], 4000, "0.3",
-     "bombing and escaping: the survival skills, learned cheaply alone"),
+     "bombing and escaping, solo"),
     ("3-peaceful", "classic", ["peaceful_agent"] * 3, 2000, "0.2",
-     "other bodies on the board, but they never bomb: safe introduction"),
+     "opponents that never bomb"),
     ("4-collector", "classic", ["coin_collector_agent"] * 3, 5000, "0.1",
-     "opponents that bomb for coins: real competition for space"),
+     "opponents that bomb for coins"),
     ("5-rulebased", "classic", ["rule_based_agent"] * 3, 5000, "0.05",
-     "the benchmark opponent; the sheet says beating it is the bar"),
+     "the benchmark opponent"),
 ]
 
-# Self-play is OPT-IN (--selfplay). Measured: 3000 rounds vs identical copies
-# after the rule_based stage dropped the rule_based evaluation from 116 to 77.
-# Copies never bomb when adjacent, so the aggression tuned to rule_based stops
-# paying and the table drifts. If used, run it BEFORE stage 5, not after.
+# Self-play is opt-in. Training against identical copies after the
+# rule_based stage degraded the rule_based evaluation (copies behave
+# differently from rule_based, so the policy drifts). If used, run it before
+# the rule_based stage.
 SELFPLAY_STAGE = ("6-selfplay", "classic", [AGENT] * 3, 3000, "0.1",
-                  "sparring at your own level; only the FIRST instance trains")
+                  "self-play; only the first instance trains")
 
 # evaluation after every stage: always measured against the tournament setting
 EVAL_OPPONENTS = ["rule_based_agent"] * 3
@@ -132,10 +121,7 @@ def main():
         evaluate(dict(os.environ), f"{number}-{name}")
 
     if not args.dry_run:
-        print("\nPipeline finished. The tournament model is "
-              f"{MODEL}; per-stage checkpoints are in {CHECKPOINTS}/.")
-        print("If a late stage made things worse, copy the better checkpoint "
-              "back over the model file and retrain from there.")
+        print(f"\nDone. Model: {MODEL}; per-stage checkpoints: {CHECKPOINTS}/")
 
 
 if __name__ == "__main__":
