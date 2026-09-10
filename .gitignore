@@ -112,3 +112,14 @@ screenshots/*.webm
 replays/
 results/
 evaluation_results/
+
+# Editor
+.vscode/
+.Rhistory
+
+# Curated results: ignore everything except the supplied files
+results/candidates/*
+!results/candidates/LEDGER.md
+!results/candidates/tournament.pkl
+!results/candidates/tournament_eval100.json
+!results/candidates/adapted10000_eval100.json
