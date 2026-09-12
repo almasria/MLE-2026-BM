@@ -1,4 +1,4 @@
-"""callbacks.py — DQN agent using feature engineering v4."""
+"""callbacks.py — DQN agent using feature engineering v5."""
 
 import os
 import random
@@ -15,8 +15,6 @@ from .featuresv5 import (
     BOMB_EMPTY,
     URGENCY_IMMINENT,
     survivable_actions,
-    F_ENGAGEMENT,
-    ENGAGE_ADVANTAGE,
 )
 
 ACTIONS = ['UP', 'RIGHT', 'DOWN', 'LEFT', 'WAIT', 'BOMB']
@@ -86,15 +84,6 @@ def setup(self):
 
 
 def allowed_actions(features, game_state):
-    """
-    Shallow v4 action mask.
-
-    This matches the q_agent's basic safety constraints:
-      - only enter safe neighbours
-      - don't WAIT when danger is imminent if a move exists
-      - only allow bombs when v4 considers them survivable
-    """
-
     allowed = [
         i
         for i in range(4)

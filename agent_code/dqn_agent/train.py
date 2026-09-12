@@ -1,4 +1,4 @@
-"""DQN training with feature engineering v4."""
+"""DQN training with feature engineering v5."""
 
 import os
 import random
@@ -99,20 +99,6 @@ MOVED_EVENTS = {
 
 # Replay-buffer helper
 def get_allowed_next_actions(game_state):
-    """
-    Get the actions that the v4 safety system considers survivable.
-
-    First apply the shallow feature-based action mask, then apply the
-    full-depth survivable_actions() pruning.
-
-    Returns action indices:
-        0 = UP
-        1 = RIGHT
-        2 = DOWN
-        3 = LEFT
-        4 = WAIT
-        5 = BOMB
-    """
 
     if game_state is None:
         return []
@@ -216,9 +202,6 @@ def add_custom_events(
     new_f,
     events,
 ):
-    """
-    Add the same custom v4 shaping events used by q_agent.
-    """
 
     if old_f is None:
         return
@@ -371,7 +354,6 @@ def game_events_occurred(
     if self_action not in ACTIONS:
         return
 
-    # Convert states to v4 features
     old_f = state_to_features(
         old_game_state
     )
