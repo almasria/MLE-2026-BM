@@ -27,7 +27,11 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-AGENT = "RL-Team"
+AGENTS = {
+    "RL-Team": "Q_AGENT_MODEL_PATH",
+    "dqn_agent": "DQN_MODEL_PATH",
+}
+
 OPPONENTS = {
     "rulebased": ("classic", ["rule_based_agent"] * 3),
     "collector": ("classic", ["coin_collector_agent"] * 3),
@@ -43,7 +47,17 @@ HEADER = ("timestamp,model,opponents,rounds,seed,score,score_per_round,best_opp,
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", required=True, help="path to the .pkl to evaluate")
+    ap.add_argument(
+        "--agent",
+        default="RL-Team",
+        choices=AGENTS,
+        help="agent to evaluate (default: RL-Team)",
+    )
+    ap.add_argument(
+        "--model",
+        required=True,
+        help="path to the model/checkpoint to evaluate",
+    )
     ap.add_argument("--opponents", default="rulebased", choices=OPPONENTS)
     ap.add_argument("--rounds", type=int, default=100)
     ap.add_argument("--seeds", type=int, default=1, help="repeat with seeds 0..n-1")
@@ -60,11 +74,17 @@ def main():
 
     for seed in range(args.seeds):
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        label = f"{model.stem}_{args.opponents}_r{args.rounds}_s{seed}_{stamp}"
+        label = f"{model.stem}_{args.agent}_{args.opponents}_r{args.rounds}_s{seed}_{stamp}"
         stats = f"results/evaluations/{label}.json"
-        env = dict(os.environ, Q_AGENT_MODEL_PATH=str(model), Q_AGENT_SEED=str(seed))
-        cmd = [sys.executable, "main.py", "play", "--agents", AGENT, *opponents,
-               "--scenario", scenario, "--n-rounds", str(args.rounds), "--no-gui",
+        env = dict(
+            os.environ,
+            **{
+                AGENTS[args.agent]: str(model),
+                "Q_AGENT_SEED": str(seed),
+                "DQN_SEED": str(seed),
+            },
+        )
+        cmd = [sys.executable, "main.py", "play", "--agents", args.agent, *opponents,               "--scenario", scenario, "--n-rounds", str(args.rounds), "--no-gui",
                "--save-stats", stats]
         result = subprocess.run(cmd, env=env, capture_output=True, text=True)
         if result.returncode != 0:
@@ -72,8 +92,8 @@ def main():
             sys.exit("evaluation failed")
 
         data = json.load(open(stats))["by_agent"]
-        me = data[AGENT]
-        opp = [v.get("score", 0) for k, v in data.items() if k != AGENT]
+        me = data[args.agent]
+        opp = [v.get("score", 0) for k, v in data.items() if k != args.agent]
         n = args.rounds
         row = {
             "timestamp": stamp, "model": model.name, "opponents": args.opponents,
