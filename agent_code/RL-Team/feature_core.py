@@ -39,11 +39,11 @@ PARANOID_MOVES = os.environ.get("Q_AGENT_PARANOID_MOVES", "1") == "1"
 # tournament scenario: 9 coins, 3 opponents (used to detect the endgame)
 TOTAL_COINS = int(os.environ.get("Q_AGENT_TOTAL_COINS", "9"))
 INITIAL_OPPONENTS = int(os.environ.get("Q_AGENT_INITIAL_OPPONENTS", "3"))
-ENGAGE_RADIUS = int(os.environ.get("Q_AGENT_ENGAGE_RADIUS", "4"))
+ENGAGE_RADIUS = int(os.environ.get("Q_AGENT_ENGAGE_RADIUS", "5"))
 # an escape's safe tile must keep this Manhattan distance from armed
 # opponents for a bomb to count as survivable (0 disables the requirement)
 ESCAPE_CLEARANCE = int(os.environ.get("Q_AGENT_ESCAPE_CLEARANCE", "2"))
-NEAR_COIN = int(os.environ.get("Q_AGENT_NEAR_COIN", "2"))
+NEAR_COIN = int(os.environ.get("Q_AGENT_NEAR_COIN", "3"))
 ALLOW_EMPTY_BOMB = os.environ.get("Q_AGENT_ALLOW_EMPTY_BOMB", "0") == "1"
 MANY_CRATES = 2                         # crates in blast for a "many" bomb
 
