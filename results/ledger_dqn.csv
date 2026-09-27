@@ -1,0 +1,14 @@
+timestamp,model,opponents,rounds,seed,score,score_per_round,best_opp,coins,kills,suicides,survival_pct,ms_per_step,stats_file
+20260914-093752,dqn_model_v5.pt,rulebased,100,0,421,4.21,337,206,43,10,90.0,1.02,results/evaluations/dqn_model_v5_dqn_agent_rulebased_r100_s0_20260914-093752.json
+20260914-094123,dqn_model_v5.pt,rulebased,100,0,357,3.57,323,202,31,11,89.0,1.04,results/evaluations/dqn_model_v5_dqn_agent_rulebased_r100_s0_20260914-094123.json
+20260914-094338,dqn_model_v5.pt,rulebased,100,1,318,3.18,359,198,24,20,80.0,1.11,results/evaluations/dqn_model_v5_dqn_agent_rulebased_r100_s1_20260914-094338.json
+20260914-094600,dqn_model_v5.pt,rulebased,100,2,333,3.33,339,193,28,14,86.0,1.0,results/evaluations/dqn_model_v5_dqn_agent_rulebased_r100_s2_20260914-094600.json
+20260914-100002,dqn_model_v5.pt,mixed,100,0,479,4.79,647,239,48,11,89.0,1.08,results/evaluations/dqn_model_v5_dqn_agent_mixed_r100_s0_20260914-100002.json
+20260914-101246,dqn_model_v5.pt,solo-crates,30,0,171,5.7,,171,0,0,100.0,0.9,results/evaluations/dqn_model_v5_dqn_agent_solo-crates_r30_s0_20260914-101246.json
+20260914-101348,dqn_model_v5.pt,solo-coins,30,0,1500,50.0,,1500,0,0,100.0,0.71,results/evaluations/dqn_model_v5_dqn_agent_solo-coins_r30_s0_20260914-101348.json
+20260925-192745,dqn_model_v5.pt,rulebased,100,0,380,3.8,338,195,37,19,81.0,1.29,results/evaluations/dqn_model_v5_dqn_agent_rulebased_r100_s0_20260925-192745.json
+20260925-193431,dqn_model_v5.pt,rulebased,100,0,421,4.21,316,201,44,16,84.0,1.05,results/evaluations/dqn_model_v5_dqn_agent_rulebased_r100_s0_20260925-193431.json
+20260925-193642,dqn_model_v5.pt,rulebased,100,1,340,3.4,312,205,27,19,81.0,1.05,results/evaluations/dqn_model_v5_dqn_agent_rulebased_r100_s1_20260925-193642.json
+20260925-193859,dqn_model_v5.pt,rulebased,100,2,329,3.29,378,204,25,15,85.0,1.06,results/evaluations/dqn_model_v5_dqn_agent_rulebased_r100_s2_20260925-193859.json
+20260925-194443,dqn_model_v5.pt,mixed,50,0,179,3.58,310,114,13,5,90.0,1.02,results/evaluations/dqn_model_v5_dqn_agent_mixed_r50_s0_20260925-194443.json
+20260925-195225,dqn_model_v5.pt,solo-crates,30,0,174,5.8,,174,0,0,100.0,0.86,results/evaluations/dqn_model_v5_dqn_agent_solo-crates_r30_s0_20260925-195225.json
