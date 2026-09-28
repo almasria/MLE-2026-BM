@@ -1,0 +1,86 @@
+{
+    "by_agent": {
+        "q_agent": {
+            "bombs": 63,
+            "coins": 11,
+            "crates": 90,
+            "invalid": 13,
+            "kills": 1,
+            "moves": 1075,
+            "rounds": 5,
+            "score": 16,
+            "steps": 1456,
+            "time": 1.9585931301116943
+        },
+        "rule_based_agent_0": {
+            "bombs": 109,
+            "coins": 15,
+            "crates": 180,
+            "invalid": 35,
+            "moves": 1095,
+            "rounds": 5,
+            "score": 15,
+            "steps": 1244,
+            "suicides": 2,
+            "time": 2.7047808170318604
+        },
+        "rule_based_agent_1": {
+            "bombs": 113,
+            "coins": 9,
+            "crates": 194,
+            "invalid": 41,
+            "kills": 1,
+            "moves": 1145,
+            "rounds": 5,
+            "score": 14,
+            "steps": 1304,
+            "suicides": 2,
+            "time": 2.988741397857666
+        },
+        "rule_based_agent_2": {
+            "bombs": 82,
+            "coins": 8,
+            "crates": 169,
+            "invalid": 38,
+            "kills": 2,
+            "moves": 765,
+            "rounds": 5,
+            "score": 18,
+            "steps": 885,
+            "suicides": 4,
+            "time": 1.6187446117401123
+        }
+    },
+    "by_round": {
+        "Round 01 (2026-09-05 20-30-16)": {
+            "coins": 9,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 1
+        },
+        "Round 02 (2026-09-05 20-30-20)": {
+            "coins": 7,
+            "kills": 0,
+            "steps": 400,
+            "suicides": 3
+        },
+        "Round 03 (2026-09-05 20-30-21)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 335,
+            "suicides": 2
+        },
+        "Round 04 (2026-09-05 20-30-23)": {
+            "coins": 9,
+            "kills": 2,
+            "steps": 247,
+            "suicides": 1
+        },
+        "Round 05 (2026-09-05 20-30-25)": {
+            "coins": 9,
+            "kills": 1,
+            "steps": 400,
+            "suicides": 1
+        }
+    }
+}

@@ -1,0 +1,13 @@
+timestamp,model,opponents,rounds,seed,score,score_per_round,best_opp,coins,kills,suicides,survival_pct,ms_per_step,stats_file
+20260915-215619,q_table_v5_sym.pkl,mixed,100,0,598,5.98,517,333,53,10,90.0,1.38,results/evaluations/q_table_v5_sym_RL-Team_mixed_r100_s0_20260915-215619.json
+20260915-215928,q_table_v5_sym.pkl,mixed,100,1,665,6.65,515,340,65,9,91.0,1.35,results/evaluations/q_table_v5_sym_RL-Team_mixed_r100_s1_20260915-215928.json
+20260915-220225,q_table_v5_sym.pkl,mixed,100,2,655,6.55,541,350,61,18,82.0,1.41,results/evaluations/q_table_v5_sym_RL-Team_mixed_r100_s2_20260915-220225.json
+20260916-000338,q_table_v5_sym.pkl,rulebased,100,0,433,4.33,291,293,28,14,86.0,1.39,results/evaluations/q_table_v5_sym_RL-Team_rulebased_r100_s0_20260916-000338.json
+20260916-000735,q_table_v5_sym.pkl,rulebased,100,1,481,4.81,285,286,39,14,86.0,1.4,results/evaluations/q_table_v5_sym_RL-Team_rulebased_r100_s1_20260916-000735.json
+20260916-001115,q_table_v5_sym.pkl,rulebased,100,2,441,4.41,310,286,31,12,88.0,1.39,results/evaluations/q_table_v5_sym_RL-Team_rulebased_r100_s2_20260916-001115.json
+20260924-170114,tournament.pkl,rulebased,100,0,433,4.33,282,288,29,13,87.0,1.38,results/evaluations/tournament_RL-Team_rulebased_r100_s0_20260924-170114.json
+20260924-171131,tournament.pkl,rulebased,100,0,447,4.47,299,252,39,15,85.0,1.4,results/evaluations/tournament_RL-Team_rulebased_r100_s0_20260924-171131.json
+20260924-171512,tournament.pkl,rulebased,100,1,440,4.4,294,265,35,21,79.0,1.36,results/evaluations/tournament_RL-Team_rulebased_r100_s1_20260924-171512.json
+20260924-171902,tournament.pkl,rulebased,100,2,463,4.63,300,273,38,18,82.0,1.35,results/evaluations/tournament_RL-Team_rulebased_r100_s2_20260924-171902.json
+20260924-181441,tournament.pkl,mixed,50,0,292,5.84,263,187,21,7,86.0,1.4,results/evaluations/tournament_RL-Team_mixed_r50_s0_20260924-181441.json
+20260924-183554,tournament.pkl,solo-crates,30,0,1299,43.3,,1299,0,0,100.0,1.19,results/evaluations/tournament_RL-Team_solo-crates_r30_s0_20260924-183554.json

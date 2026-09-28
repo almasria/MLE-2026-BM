@@ -1,0 +1,3 @@
+param,value,seed,status,score,best_opp,coins,kills,suicides,table_size
+Q_AGENT_GAMMA,0.95,0,ok,390,344,245,29,33,1015
+Q_AGENT_GAMMA,0.95,1,ok,378,336,208,34,22,1026
