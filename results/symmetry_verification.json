@@ -1,0 +1,33 @@
+{
+  "agent_dir": "agent_code\\RL-Team",
+  "feature_version": "v5",
+  "seed": 1,
+  "canonicalisation": {
+    "tuples": 43200,
+    "group_size": 8,
+    "mismatches": 0,
+    "examples": [],
+    "orbits": 7560,
+    "orbit_size_distribution": {
+      "1": 216,
+      "2": 108,
+      "4": 3780,
+      "8": 3456
+    },
+    "reduction_factor": 5.714
+  },
+  "equivariance": {
+    "states_sampled": 5000,
+    "comparisons": 40000,
+    "disagreements": 235,
+    "disagreement_rate": 0.00588,
+    "directional_only": 235,
+    "structural": 0,
+    "differing_components": {
+      "0": 231,
+      "6": 4
+    },
+    "examples": [],
+    "values_outside_declared_ranges": {}
+  }
+}

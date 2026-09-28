@@ -1,0 +1,24 @@
+{
+  "tuples": 43200,
+  "group_size": 8,
+  "fixed_per_element": {
+    "identity": 43200,
+    "reflection across the vertical axis": 7776,
+    "reflection across the horizontal axis": 7776,
+    "90 degree rotation": 216,
+    "180 degree rotation": 432,
+    "270 degree rotation": 216,
+    "reflection across the anti-diagonal": 432,
+    "reflection across the main diagonal": 432
+  },
+  "total_fixed": 60480,
+  "orbits_by_burnside": 7560,
+  "orbits_by_enumeration": 7560,
+  "orbit_size_distribution": {
+    "1": 216,
+    "2": 108,
+    "4": 3780,
+    "8": 3456
+  },
+  "reduction_factor": 5.714
+}
